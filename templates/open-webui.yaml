@@ -1,0 +1,52 @@
+id: open-webui
+name: Open WebUI
+description: User-friendly web interface for Ollama and OpenAI-compatible APIs
+category: AI
+icon: "🤖"
+version: latest
+image: ghcr.io/open-webui/open-webui:main
+proxy_port: 8080
+
+ports:
+  - internal: 8080
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: open-webui-data
+    mount_path: /app/backend/data
+    description: Open WebUI data, model configs, and chat history
+
+env_vars:
+  - key: OLLAMA_BASE_URL
+    description: URL of your Ollama instance (use host.docker.internal for local Ollama)
+    default: http://host.docker.internal:11434
+    required: false
+  - key: OPENAI_API_KEY
+    description: OpenAI API key (optional, for GPT models)
+    default: ""
+    required: false
+    secret: true
+  - key: OPENAI_API_BASE_URL
+    description: OpenAI-compatible API base URL
+    default: https://api.openai.com/v1
+    required: false
+  - key: WEBUI_SECRET_KEY
+    description: Secret key for session security (generate with openssl rand -hex 32)
+    default: ""
+    required: true
+    secret: true
+  - key: WEBUI_AUTH
+    description: Enable user authentication
+    default: "true"
+    required: false
+  - key: DEFAULT_MODELS
+    description: Comma-separated list of default models to show
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

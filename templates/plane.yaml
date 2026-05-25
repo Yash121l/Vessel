@@ -1,0 +1,75 @@
+id: plane
+name: Plane
+description: Open-source project management tool — a Jira and Linear alternative
+category: Productivity
+icon: "✈️"
+version: latest
+image: makeplane/plane-frontend:latest
+proxy_port: 3000
+
+ports:
+  - internal: 3000
+    external: 3002
+    protocol: tcp
+
+env_vars:
+  - key: NEXT_PUBLIC_API_BASE_URL
+    description: Your public domain URL (e.g. https://plane.example.com)
+    default: ""
+    required: true
+  - key: SECRET_KEY
+    description: Django secret key (generate with openssl rand -hex 32)
+    default: ""
+    required: true
+    secret: true
+  - key: DATABASE_URL
+    description: PostgreSQL connection string
+    default: postgresql://plane:plane_password@plane-db:5432/plane
+    required: false
+  - key: REDIS_URL
+    description: Redis connection string
+    default: redis://plane-redis:6379/
+    required: false
+  - key: FILE_SIZE_LIMIT
+    description: Maximum file upload size in bytes
+    default: "5242880"
+    required: false
+  - key: CORS_ALLOWED_ORIGINS
+    description: Comma-separated list of allowed CORS origins
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:3000"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: plane-db
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: plane
+      POSTGRES_USER: plane
+      POSTGRES_PASSWORD: plane_password
+    volumes:
+      - name: plane-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U plane"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: plane-redis
+    image: redis:7-alpine
+    volumes:
+      - name: plane-redis-data
+        mount_path: /data
+        description: Redis persistence data
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

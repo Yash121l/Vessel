@@ -1,0 +1,15 @@
+[build]
+  cmd = "go build -o ./tmp/vessel ."
+  bin = "./tmp/vessel serve"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "dist", "vendor"]
+  delay = 500
+
+[log]
+  time = false
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"

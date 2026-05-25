@@ -1,0 +1,8 @@
+vessel
+dist/
+tmp/
+*.db
+*.db-shm
+*.db-wal
+.env
+vendor/

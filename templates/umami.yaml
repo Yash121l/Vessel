@@ -1,0 +1,51 @@
+id: umami
+name: Umami
+description: Privacy-focused web analytics, a simple alternative to Google Analytics
+category: Analytics
+icon: "📈"
+version: latest
+image: ghcr.io/umami-software/umami:postgresql-latest
+proxy_port: 3000
+
+ports:
+  - internal: 3000
+    external: 3001
+    protocol: tcp
+
+env_vars:
+  - key: DATABASE_URL
+    description: PostgreSQL connection string
+    default: postgresql://umami:umami_password@umami-db:5432/umami
+    required: true
+  - key: DATABASE_TYPE
+    description: Database type
+    default: postgresql
+    required: false
+  - key: APP_SECRET
+    description: Random secret string for session encryption (generate with openssl rand -hex 32)
+    default: ""
+    required: true
+    secret: true
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:3000/api/heartbeat"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: umami-db
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: umami_password
+    volumes:
+      - name: umami-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data directory
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U umami"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

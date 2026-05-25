@@ -1,0 +1,52 @@
+id: n8n
+name: n8n
+description: Workflow automation tool with a powerful visual editor
+category: Automation
+icon: "🔄"
+version: latest
+image: n8nio/n8n:latest
+proxy_port: 5678
+
+ports:
+  - internal: 5678
+    external: 5678
+    protocol: tcp
+
+volumes:
+  - name: n8n-data
+    mount_path: /home/node/.n8n
+    description: n8n workflows, credentials, and execution history
+
+env_vars:
+  - key: N8N_BASIC_AUTH_ACTIVE
+    description: Enable HTTP basic authentication
+    default: "true"
+    required: false
+  - key: N8N_BASIC_AUTH_USER
+    description: Basic auth username
+    default: admin
+    required: false
+  - key: N8N_BASIC_AUTH_PASSWORD
+    description: Basic auth password
+    default: ""
+    required: true
+    secret: true
+  - key: WEBHOOK_URL
+    description: Public URL for webhooks (your domain, e.g. https://n8n.example.com)
+    default: ""
+    required: false
+  - key: GENERIC_TIMEZONE
+    description: Timezone for workflow scheduling
+    default: UTC
+    required: false
+  - key: N8N_ENCRYPTION_KEY
+    description: Encryption key for stored credentials
+    default: ""
+    required: true
+    secret: true
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

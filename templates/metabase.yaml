@@ -1,0 +1,42 @@
+id: metabase
+name: Metabase
+description: Open source business intelligence and analytics tool
+category: Analytics
+icon: "📊"
+version: latest
+image: metabase/metabase:latest
+proxy_port: 3000
+
+ports:
+  - internal: 3000
+    external: 3000
+    protocol: tcp
+
+volumes:
+  - name: metabase-data
+    mount_path: /metabase-data
+    description: Metabase application data and embedded database
+
+env_vars:
+  - key: MB_DB_TYPE
+    description: Database type (h2 for embedded SQLite)
+    default: h2
+    required: false
+  - key: MB_DB_FILE
+    description: Path to the embedded database file
+    default: /metabase-data/metabase.db
+    required: false
+  - key: JAVA_TIMEZONE
+    description: JVM timezone
+    default: UTC
+    required: false
+  - key: MB_SITE_URL
+    description: Public URL of your Metabase instance
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 5

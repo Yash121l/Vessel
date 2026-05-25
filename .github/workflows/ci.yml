@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+      - name: Tidy
+        run: go mod tidy
+      - name: Build
+        run: GOFLAGS="-mod=mod" go build ./...
+      - name: Test
+        run: GOFLAGS="-mod=mod" go test ./... -race -timeout 60s
+      - name: Vet
+        run: GOFLAGS="-mod=mod" go vet ./...

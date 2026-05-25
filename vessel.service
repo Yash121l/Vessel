@@ -1,0 +1,25 @@
+[Unit]
+Description=Vessel - Self-hosted App Deployment Manager
+Documentation=https://github.com/vessel-app/vessel
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/vessel serve
+Restart=on-failure
+RestartSec=5s
+Environment=VESSEL_CONFIG=/etc/vessel/config.yaml
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vessel
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vessel /etc/vessel /etc/caddy /var/log/caddy
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
