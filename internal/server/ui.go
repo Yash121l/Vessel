@@ -47,8 +47,7 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;font-wei
 .editor:focus{border-color:var(--accent);outline:none}
 .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:20px}
 .tab{padding:8px 16px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
-.tab:hover{color:var(--text)}
-.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--text)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -90,10 +89,7 @@ async function loadNginx(){
 }
 async function loadNginxConfig(){try{const d=await api('GET','/nginx/config');set({nginxMainConfig:d.content})}catch(e){set({error:e.message})}}
 async function loadNginxLogs(t){try{const d=await api('GET','/nginx/logs/'+t);set({nginxLogs:d.lines||[]})}catch(e){set({error:e.message})}}
-</script>
-`
-<script>
-// Actions
+
 async function act(id,a){
   if(a==='stop'&&!confirm('Stop this deployment? The app will go offline.'))return;
   if(a==='restart'&&!confirm('Restart this deployment?'))return;
@@ -119,12 +115,11 @@ async function deploy(e){
   }catch(e){set({deploying:false,error:e.message})}
 }
 
-// Nginx actions
 async function ngxAction(action){
   try{await api('POST','/nginx/'+action);await loadNginx();set({error:null})}catch(e){set({error:e.message})}
 }
 async function ngxTest(){
-  try{const d=await api('GET','/nginx/test');alert(d.ok?'✓ Config OK\n\n'+d.output:'✗ Config Error\n\n'+d.output)}catch(e){set({error:e.message})}
+  try{const d=await api('GET','/nginx/test');alert(d.ok?'Config OK\n\n'+d.output:'Config Error\n\n'+d.output)}catch(e){set({error:e.message})}
 }
 async function ngxSaveMainConfig(){
   try{await api('PUT','/nginx/config',{content:S.nginxMainConfig});alert('Saved. Reload nginx to apply.');set({error:null})}catch(e){set({error:e.message})}
@@ -153,7 +148,6 @@ async function ngxCreateSite(e){
   }catch(e){set({error:e.message})}
 }
 
-// Logs
 function openLogs(id,type,name){
   if(S.logsEs)S.logsEs.close();
   const path=type==='c'?'/docker/containers/'+id+'/logs':'/deployments/'+id+'/logs';
@@ -183,11 +177,10 @@ function icon(id){
   return m[id]||'📦';
 }
 function badge(s){
-  return'<span class="tag tag-'+(s||'stopped')+'"><span class="dot'+(s==='running'||s==='active'?' dot-pulse':'')+'"></span>'+(s||'unknown')+'</span>';
+  return '<span class="tag tag-'+(s||'stopped')+'"><span class="dot'+(s==='running'||s==='active'?' dot-pulse':'')+'"></span>'+(s||'unknown')+'</span>';
 }
-</script>
-`
-<script>
+function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
 function render(){
   const navItems=[
     {id:'containers',label:'Containers',ico:'▣'},
@@ -211,7 +204,7 @@ function render(){
     '<div style="padding:12px 16px;border-top:1px solid var(--border);font-size:11px">'+
       '<a href="https://github.com/Yash121l/Vessel" target="_blank" style="color:var(--muted)">GitHub ↗</a></div></nav>';
 
-  const errBanner=S.error?'<div style="background:var(--red-bg);border:1px solid #ef444430;border-radius:var(--r);padding:10px 14px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center"><span style="color:var(--red);font-size:13px">'+S.error+'</span><button class="btn btn-xs" onclick="set({error:null})">✕</button></div>':'';
+  const errBanner=S.error?'<div style="background:var(--red-bg);border:1px solid #ef444430;border-radius:var(--r);padding:10px 14px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center"><span style="color:var(--red);font-size:13px">'+S.error+'</span><button class="btn btn-xs" onclick="set({error:null})">x</button></div>':'';
 
   const pages={containers:pageContainers,nginx:pageNginx,deploy:pageDeploy,logs:pageLogs,settings:pageSettings};
   const content=(pages[S.page]||pageContainers)();
@@ -221,13 +214,11 @@ function render(){
     '<main style="flex:1;overflow:auto"><div style="max-width:980px;margin:0 auto;padding:28px 24px">'+errBanner+content+'</div></main></div>';
 }
 
-// ── Containers page ───────────────────────────────────────────────────────────
 function pageContainers(){
   const managed=S.deployments.filter(d=>!d.imported);
   const imported=S.deployments.filter(d=>d.imported);
   const trackedIds=new Set(S.deployments.map(d=>d.container_id).filter(Boolean));
   const untracked=S.containers.filter(c=>!c.managed_by_vessel&&!trackedIds.has(c.id));
-
   let h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">'+
     '<div><h1 style="font-size:19px;font-weight:700;letter-spacing:-.4px">Containers</h1>'+
     '<p style="color:var(--muted);font-size:12px;margin-top:2px">'+S.containers.length+' on this host</p></div>'+
@@ -235,7 +226,6 @@ function pageContainers(){
       '<button class="btn btn-sm" onclick="load()">↺ Refresh</button>'+
       '<button class="btn-primary btn-sm" onclick="nav(\'deploy\')">+ Deploy</button>'+
     '</div></div>';
-
   if(managed.length){h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Vessel Managed</div>'+managed.map(cardManaged).join('')+'<div style="margin-bottom:24px"></div>'}
   if(imported.length){h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Monitored</div>'+imported.map(cardImported).join('')+'<div style="margin-bottom:24px"></div>'}
   if(untracked.length){h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Discovered — click Monitor to track</div>'+untracked.map(cardDiscovered).join('')}
@@ -291,10 +281,7 @@ function cardDiscovered(c){
       '<button class="btn-primary btn-sm" onclick="monitor(\''+c.id+'\',\''+c.name+'\')">Monitor</button>'+
     '</div></div></div>';
 }
-</script>
-`
-<script>
-// ── Nginx page ────────────────────────────────────────────────────────────────
+
 function pageNginx(){
   const st=S.nginxStatus;
   const statusBar=st?
@@ -318,9 +305,9 @@ function pageNginx(){
       {sites:'Sites',config:'nginx.conf',logs:'Logs'}[t]+'</span>').join('');
 
   let tabContent='';
-  if(S.nginxTab==='sites') tabContent=nginxSitesTab();
-  else if(S.nginxTab==='config') tabContent=nginxConfigTab();
-  else if(S.nginxTab==='logs') tabContent=nginxLogsTab();
+  if(S.nginxTab==='sites')tabContent=nginxSitesTab();
+  else if(S.nginxTab==='config')tabContent=nginxConfigTab();
+  else if(S.nginxTab==='logs')tabContent=nginxLogsTab();
 
   return'<div>'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">'+
@@ -345,7 +332,6 @@ function nginxSitesTab(){
         '<button class="btn-primary" onclick="ngxSaveSite()">Save</button>'+
       '</div></div>';
   }
-
   if(S.newSiteMode){
     return'<div>'+
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">'+
@@ -367,7 +353,6 @@ function nginxSitesTab(){
         '</div>'+
       '</form></div>';
   }
-
   const sites=S.nginxSites;
   return'<div>'+
     '<div style="display:flex;justify-content:flex-end;margin-bottom:14px">'+
@@ -421,11 +406,6 @@ function nginxLogsTab(){
       '</pre></div></div>';
 }
 
-function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-</script>
-`
-<script>
-// ── Deploy page ───────────────────────────────────────────────────────────────
 function pageDeploy(){
   const apps=S.apps;
   return'<div>'+
@@ -452,7 +432,7 @@ function pageDeploy(){
         '<div style="display:flex;gap:8px;justify-content:flex-end">'+
           '<button type="button" class="btn" onclick="nav(\'containers\')">Cancel</button>'+
           '<button type="submit" class="btn-primary"'+(S.deploying?' disabled':'')+'>'+
-            (S.deploying?'⏳ Deploying…':'🚀 Deploy')+'</button>'+
+            (S.deploying?'Deploying…':'🚀 Deploy')+'</button>'+
         '</div></div></form></div>';
 }
 
@@ -470,7 +450,6 @@ function selectApp(id){
       '<span style="color:var(--muted)">'+e.description+'</span></div>').join('')+'</div>';
 }
 
-// ── Logs page ─────────────────────────────────────────────────────────────────
 function pageLogs(){
   const t=S.logsTarget;
   return'<div>'+
@@ -489,7 +468,6 @@ function pageLogs(){
         (S.logs||'Connecting…')+'</pre></div></div>';
 }
 
-// ── Settings page ─────────────────────────────────────────────────────────────
 function pageSettings(){
   function row(l,v){return'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted);font-size:13px">'+l+'</span><code style="font-family:var(--mono);font-size:12px;color:var(--accent2)">'+v+'</code></div>'}
   return'<div><div style="margin-bottom:22px"><h1 style="font-size:19px;font-weight:700;letter-spacing:-.4px">Settings</h1></div>'+
@@ -501,7 +479,6 @@ function pageSettings(){
       '</div></div></div>';
 }
 
-// ── Boot ──────────────────────────────────────────────────────────────────────
 set({});
 load();
 </script>

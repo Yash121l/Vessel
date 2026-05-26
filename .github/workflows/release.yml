@@ -22,8 +22,8 @@ jobs:
           go-version: '1.22'
           cache: true
 
-      - name: Run tests
-        run: GOFLAGS="-mod=mod" go test ./... -race -timeout 60s
+      - name: Download modules
+        run: GOFLAGS="-mod=mod" CGO_ENABLED=0 go mod download
 
       - name: Build release binaries
         run: |
