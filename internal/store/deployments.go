@@ -144,8 +144,18 @@ func (db *DB) UpdateContainerID(id, containerID string) error {
 
 // DeleteDeployment removes a deployment and its env vars.
 func (db *DB) DeleteDeployment(id string) error {
-	_, err := db.Exec(`DELETE FROM deployments WHERE id = ?`, id)
-	return err
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM deployment_env WHERE deployment_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM deployments WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // UpdateDeploymentEnv replaces all env vars for a deployment.

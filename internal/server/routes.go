@@ -6,17 +6,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/Yash121l/Vessel/internal/deployment"
 	"github.com/Yash121l/Vessel/internal/docker"
 	"github.com/Yash121l/Vessel/internal/nginx"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func registerRoutes(
@@ -25,14 +26,31 @@ func registerRoutes(
 	reg *registry.Registry,
 	engine *deployment.Engine,
 ) {
+	// Public setup/auth endpoints
+	r.GET("/setup", setupStatus(db))
+	r.POST("/setup", setupAdmin(db))
+	r.POST("/login", login(db))
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok", "version": "0.1.0"})
+	})
+
+	r.Use(authRequired(db))
+	r.Use(requirePermission())
+	r.GET("/me", me())
+	r.POST("/logout", logout(db))
+	r.GET("/users", listUsers(db))
+	r.POST("/users", createUser(db))
+	r.PUT("/users/:id", updateUser(db))
+	r.DELETE("/users/:id", deleteUser(db))
+
 	// Apps (templates)
 	r.GET("/apps", listApps(reg))
 	r.GET("/apps/:id", getApp(reg))
 
 	// Deployments
-	r.GET("/deployments", listDeployments(db))
-	r.POST("/deployments", createDeployment(engine))
-	r.GET("/deployments/:id", getDeployment(db))
+	r.GET("/deployments", listDeployments(db, reg))
+	r.POST("/deployments", createDeployment(engine, reg))
+	r.GET("/deployments/:id", getDeployment(db, reg))
 	r.DELETE("/deployments/:id", removeDeployment(engine))
 
 	// Deployment actions
@@ -81,10 +99,6 @@ func registerRoutes(
 	r.GET("/nginx/logs/:type/stream", nginxStreamLogs(ngx))
 	r.GET("/nginx/stats", nginxGetStats(ngx))
 
-	// Health
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok", "version": "0.1.0"})
-	})
 }
 
 // --- Apps ---
@@ -108,7 +122,7 @@ func getApp(reg *registry.Registry) gin.HandlerFunc {
 
 // --- Deployments ---
 
-func listDeployments(db *store.DB) gin.HandlerFunc {
+func listDeployments(db *store.DB, reg *registry.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		deployments, err := db.ListDeployments()
 		if err != nil {
@@ -118,11 +132,11 @@ func listDeployments(db *store.DB) gin.HandlerFunc {
 		if deployments == nil {
 			deployments = []*store.Deployment{}
 		}
-		c.JSON(200, gin.H{"deployments": deployments})
+		c.JSON(200, gin.H{"deployments": deploymentListResponse(reg, deployments)})
 	}
 }
 
-func getDeployment(db *store.DB) gin.HandlerFunc {
+func getDeployment(db *store.DB, reg *registry.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		d, err := db.GetDeployment(c.Param("id"))
 		if err != nil {
@@ -133,7 +147,7 @@ func getDeployment(db *store.DB) gin.HandlerFunc {
 			c.JSON(404, gin.H{"error": "deployment not found"})
 			return
 		}
-		c.JSON(200, d)
+		c.JSON(200, deploymentResponse(reg, d))
 	}
 }
 
@@ -144,10 +158,22 @@ type createDeploymentRequest struct {
 	Env    map[string]string `json:"env"`
 }
 
-func createDeployment(engine *deployment.Engine) gin.HandlerFunc {
+func createDeployment(engine *deployment.Engine, reg *registry.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req createDeploymentRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateDeploymentName(req.Name); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateDomain(req.Domain); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateEnv(req.Env); err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
@@ -165,7 +191,7 @@ func createDeployment(engine *deployment.Engine) gin.HandlerFunc {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(201, d)
+		c.JSON(201, deploymentResponse(reg, d))
 	}
 }
 
@@ -190,6 +216,7 @@ func getComposeDetail(engine *deployment.Engine) gin.HandlerFunc {
 			c.JSON(404, gin.H{"error": err.Error()})
 			return
 		}
+		detail.ComposeYAML = redactComposeYAML(detail.ComposeYAML)
 		c.JSON(200, detail)
 	}
 }
@@ -352,6 +379,12 @@ func importContainer(db *store.DB) gin.HandlerFunc {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
+		if req.Name != "" {
+			if err := validateDeploymentName(req.Name); err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+		}
 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
@@ -495,9 +528,9 @@ func restartContainer() gin.HandlerFunc {
 func deployCustomContainer(engine *deployment.Engine) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			Image  string            `json:"image"  binding:"required"`
-			Name   string            `json:"name"   binding:"required"`
-			Domain string            `json:"domain"`
+			Image  string `json:"image"  binding:"required"`
+			Name   string `json:"name"   binding:"required"`
+			Domain string `json:"domain"`
 			Ports  []struct {
 				Internal int    `json:"internal"`
 				External int    `json:"external"`
@@ -512,6 +545,38 @@ func deployCustomContainer(engine *deployment.Engine) gin.HandlerFunc {
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
+		}
+		if err := validateImageRef(req.Image); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateDeploymentName(req.Name); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateDomain(req.Domain); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateEnv(req.Env); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		for _, p := range req.Ports {
+			if err := validatePort(p.Internal, "container port"); err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+			if p.External != 0 {
+				if err := validatePort(p.External, "host port"); err != nil {
+					c.JSON(400, gin.H{"error": err.Error()})
+					return
+				}
+			}
+			if p.Protocol != "" && p.Protocol != "tcp" && p.Protocol != "udp" {
+				c.JSON(400, gin.H{"error": "protocol must be tcp or udp"})
+				return
+			}
 		}
 
 		// Build a synthetic AppTemplate from the request
@@ -569,10 +634,10 @@ func dockerHubSearch() gin.HandlerFunc {
 			c.JSON(400, gin.H{"error": "q is required"})
 			return
 		}
-		url := "https://hub.docker.com/v2/search/repositories/?query=" + q + "&page_size=10"
+		searchURL := "https://hub.docker.com/v2/search/repositories/?query=" + url.QueryEscape(q) + "&page_size=10"
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Second)
 		defer cancel()
-		httpReq, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+		httpReq, _ := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
 		httpReq.Header.Set("Accept", "application/json")
 		resp, err := http.DefaultClient.Do(httpReq)
 		if err != nil {
@@ -771,6 +836,10 @@ func nginxListSites(ngx *nginx.Manager) gin.HandlerFunc {
 
 func nginxGetSite(ngx *nginx.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if err := validateSiteFileName(c.Param("name")); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		site, err := ngx.GetSite(c.Param("name"))
 		if err != nil {
 			c.JSON(404, gin.H{"error": err.Error()})
@@ -782,6 +851,10 @@ func nginxGetSite(ngx *nginx.Manager) gin.HandlerFunc {
 
 func nginxSaveSite(ngx *nginx.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if err := validateSiteFileName(c.Param("name")); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		var req struct {
 			Content string `json:"content" binding:"required"`
 		}
@@ -812,6 +885,22 @@ func nginxCreateSite(ngx *nginx.Manager) gin.HandlerFunc {
 		if req.Port == 0 {
 			req.Port = 80
 		}
+		if err := validateSiteFileName(req.Name); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateDomain(req.ServerName); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validatePort(req.Port, "listen port"); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateUpstream(req.Upstream); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		if err := ngx.CreateSite(req.Name, req.ServerName, req.Port, req.Upstream); err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
@@ -822,6 +911,10 @@ func nginxCreateSite(ngx *nginx.Manager) gin.HandlerFunc {
 
 func nginxEnableSite(ngx *nginx.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if err := validateSiteFileName(c.Param("name")); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		if err := ngx.EnableSite(c.Param("name")); err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
@@ -832,6 +925,10 @@ func nginxEnableSite(ngx *nginx.Manager) gin.HandlerFunc {
 
 func nginxDisableSite(ngx *nginx.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if err := validateSiteFileName(c.Param("name")); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		if err := ngx.DisableSite(c.Param("name")); err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
@@ -842,6 +939,10 @@ func nginxDisableSite(ngx *nginx.Manager) gin.HandlerFunc {
 
 func nginxDeleteSite(ngx *nginx.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if err := validateSiteFileName(c.Param("name")); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		if err := ngx.DeleteSite(c.Param("name")); err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
@@ -857,7 +958,8 @@ func nginxGetStats(ngx *nginx.Manager) gin.HandlerFunc {
 	}
 }
 
-func nginxGetLogs(ngx *nginx.Manager) gin.HandlerFunc {	return func(c *gin.Context) {
+func nginxGetLogs(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		n := 200
 		lines, err := ngx.TailLog(c.Param("type"), n)
 		if err != nil {

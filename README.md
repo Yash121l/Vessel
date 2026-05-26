@@ -14,6 +14,9 @@ curl -sSL https://raw.githubusercontent.com/Yash121l/Vessel/main/install.sh | su
 
 Then open `http://your-server-ip:4800` in your browser.
 
+On first launch, Vessel asks you to create an owner account. All management API
+routes are protected after setup.
+
 ---
 
 ## What it does
@@ -26,10 +29,16 @@ Vessel is an operating layer for self-hosted apps on a VPS. It:
 - Configures Caddy reverse proxy with automatic HTTPS
 - Streams live logs from any deployment
 - Manages start/stop/restart/update lifecycle
+- Imports and monitors existing Docker containers
+- Provides a small role-based user system for teams sharing one VPS
 
 ---
 
-## Supported Apps (Phase 1)
+## Supported Apps
+
+The v0.1 path focuses on a small reliable catalog first. Additional templates can
+be added from `/var/lib/vessel/templates`, but new built-ins should be verified on
+a real VPS before being treated as stable.
 
 | App | Category | Description |
 |-----|----------|-------------|
@@ -65,6 +74,7 @@ vessel/
 │   │   └── engine.go           # Deploy/start/stop/update/logs
 │   ├── proxy/
 │   │   └── manager.go          # Caddy config generation + reload
+│   ├── nginx/                  # Advanced/experimental host nginx inspection
 │   └── server/
 │       ├── server.go           # HTTP server setup + graceful shutdown
 │       ├── routes.go           # REST API handlers
@@ -91,6 +101,15 @@ All endpoints are under `/api/v1`.
 |--------|------|-------------|
 | `GET` | `/apps` | List available app templates |
 | `GET` | `/apps/:id` | Get a specific template |
+| `GET` | `/setup` | Check whether first-run setup is complete |
+| `POST` | `/setup` | Create the first owner account |
+| `POST` | `/login` | Start a user session |
+| `POST` | `/logout` | End the current user session |
+| `GET` | `/me` | Get the current signed-in user |
+| `GET` | `/users` | List users (admin/owner) |
+| `POST` | `/users` | Create a user (admin/owner) |
+| `PUT` | `/users/:id` | Update a role or password (admin/owner) |
+| `DELETE` | `/users/:id` | Delete a user (admin/owner) |
 | `GET` | `/deployments` | List all deployments |
 | `POST` | `/deployments` | Create a new deployment |
 | `GET` | `/deployments/:id` | Get deployment details |
@@ -100,9 +119,26 @@ All endpoints are under `/api/v1`.
 | `POST` | `/deployments/:id/restart` | Restart a deployment |
 | `POST` | `/deployments/:id/update` | Pull latest images and recreate |
 | `GET` | `/deployments/:id/logs` | Stream logs (SSE) |
-| `GET` | `/settings` | Get settings |
-| `PUT` | `/settings` | Update a setting |
 | `GET` | `/health` | Health check |
+
+All endpoints except `/setup`, `/login`, and `/health` require a user session
+cookie or a bearer token matching the current session token.
+
+### Roles
+
+Vessel usually runs as root so it can manage Docker, proxy config, and system
+services. The UI therefore uses application-level roles as an easy management
+rail:
+
+| Role | Access |
+|------|--------|
+| **viewer** | Read apps, containers, Compose details, and logs |
+| **operator** | Viewer access plus deploy, start, stop, restart, update, import |
+| **admin** | Operator access plus settings, advanced host proxy tools, and user management for non-owner users |
+| **owner** | Full access, including creating or modifying owner users |
+
+These roles do not create Linux users or OS-level isolation. They limit what a
+signed-in Vessel user can do through the web UI and API.
 
 ### Deploy an app (example)
 
@@ -177,9 +213,27 @@ make help
 
 ---
 
+## Step One Scope
+
+Vessel's first milestone is reliable single-server app deployment:
+
+- Caddy is the primary reverse proxy path.
+- First-run owner setup protects host-level controls.
+- Role-based users provide clear rails for shared access to a root-powered UI.
+- Deployment names, domains, ports, env keys, Docker images, and config filenames
+  are validated server-side.
+- Secret-looking env values are redacted from API responses.
+- Domain deployments bind app ports to `127.0.0.1` so Caddy can reach them
+  without publicly exposing those ports.
+- The UI starts from apps/deployments, generated template fields, logs, and
+  Compose visibility. Advanced nginx management is not part of the primary flow.
+
+---
+
 ## Non-goals
 
-Vessel deliberately does not support: Kubernetes, multi-node orchestration, RBAC, teams, SaaS features, CI/CD pipelines, GitOps, cloud sync, or enterprise features.
+Vessel deliberately does not support: Kubernetes, multi-node orchestration, teams,
+SaaS features, CI/CD pipelines, GitOps, cloud sync, or enterprise features.
 
 ---
 

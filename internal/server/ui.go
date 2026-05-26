@@ -140,7 +140,8 @@ function imgAvatar(image,size){
 
 const API='/api/v1';
 let S={
-  page:'containers',nginxTab:'overview',deployTab:'templates',composeId:null,composeDetail:null,
+  authReady:false,configured:false,authenticated:false,authMode:'login',currentUser:null,users:[],
+  page:'containers',nginxTab:'overview',deployTab:'templates',selectedApp:null,composeId:null,composeDetail:null,
   deployments:[],apps:[],containers:[],composeStacks:[],
   nginxStatus:null,nginxSites:[],nginxMainConfig:'',nginxLogs:[],nginxStats:null,
   editingSite:null,editingContent:'',newSiteMode:false,
@@ -152,17 +153,51 @@ let S={
 };
 function set(p){Object.assign(S,p);render()}
 async function api(method,path,body){
-  const o={method,headers:{'Content-Type':'application/json'}};
+  const o={method,headers:{'Content-Type':'application/json'},credentials:'same-origin'};
   if(body)o.body=JSON.stringify(body);
   const r=await fetch(API+path,o);
   const d=await r.json().catch(()=>({}));
+  if(r.status===401){set({authenticated:false,authMode:'login',error:d.error||'authentication required'});throw new Error(d.error||'authentication required')}
   if(!r.ok)throw new Error(d.error||'Request failed');
   return d;
 }
+async function boot(){
+  try{
+    const r=await fetch(API+'/setup',{credentials:'same-origin'});
+    const d=await r.json();
+    if(!d.configured){set({authReady:true,configured:false,authenticated:false,authMode:'setup'});return}
+    const meRes=await fetch(API+'/me',{credentials:'same-origin'});
+    if(!meRes.ok){set({authReady:true,configured:true,authenticated:false,authMode:'login'});return}
+    const meData=await meRes.json();
+    S.configured=true;S.authReady=true;S.authenticated=true;S.currentUser=meData.user;render();
+    await load();
+  }catch(e){set({authReady:true,configured:true,authenticated:false,authMode:'login',error:e.message})}
+}
+async function authSubmit(e){
+  e.preventDefault();
+  const username=e.target.username?e.target.username.value:'admin';
+  const password=e.target.password.value;
+  const path=S.authMode==='setup'?'/setup':'/login';
+  try{
+    const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({username,password})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'Authentication failed');
+    set({configured:true,authenticated:true,currentUser:d.user,error:null});
+    await load();
+  }catch(err){set({error:err.message})}
+}
+async function logout(){
+  try{await api('POST','/logout')}catch(e){}
+  set({authenticated:false,authMode:'login',deploying:false,currentUser:null,users:[]});
+}
+async function loadUsers(){
+  if(!canAdmin())return;
+  try{const d=await api('GET','/users');set({users:d.users||[]})}catch(e){set({error:e.message})}
+}
 async function load(){
   try{
-    const[dc,dd]=await Promise.all([api('GET','/docker/containers'),api('GET','/deployments')]);
-    set({containers:dc.containers||[],deployments:dd.deployments||[]});
+    const[dc,dd,aa]=await Promise.all([api('GET','/docker/containers'),api('GET','/deployments'),api('GET','/apps')]);
+    set({containers:dc.containers||[],deployments:dd.deployments||[],apps:aa.apps||[]});
   }catch(e){set({error:e.message})}
 }
 async function loadApps(){try{const d=await api('GET','/apps');set({apps:d.apps||[]})}catch(e){set({error:e.message})}}
@@ -201,7 +236,7 @@ async function remove(id,name){
 }
 async function deploy(e){
   e.preventDefault();const f=e.target,env={};
-  (f.env.value||'').trim().split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)env[l.slice(0,i).trim()]=l.slice(i+1).trim()});
+  [...f.elements].forEach(el=>{if(el.name&&el.name.startsWith('env_'))env[el.name.slice(4)]=el.value});
   set({deploying:true,error:null});
   try{
     await api('POST','/deployments',{app_id:f.app_id.value,name:f.dname.value,domain:f.domain.value,env});
@@ -328,6 +363,7 @@ function nav(p){
   set({page:p,error:null,editingSite:null,newSiteMode:false,composeDetail:null,composeId:null});
   if(p==='containers')load();
   if(p==='deploy')loadApps();
+  if(p==='settings')loadUsers();
   if(p==='nginx'){loadNginx();loadNginxConfig();}
   if(p==='compose')loadComposeStacks();
 }
@@ -336,12 +372,20 @@ function fmtBytes(b){if(!b)return'0 B';if(b<1024)return b+' B';if(b<1048576)retu
 function fmtPulls(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return n}
 function statusColor(code){const c=parseInt(code);if(c>=500)return'var(--red)';if(c>=400)return'var(--yellow)';if(c>=300)return'var(--blue)';return'var(--green)'}
 function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function escAttr(s){return escHtml(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 // ── Layout ────────────────────────────────────────────────────────────────────
 function render(){
+  if(!S.authReady){
+    document.getElementById('app').innerHTML='<div style="width:100%;height:100vh;display:flex;align-items:center;justify-content:center;color:var(--muted)">Loading Vessel…</div>';
+    return;
+  }
+  if(!S.configured||!S.authenticated){
+    document.getElementById('app').innerHTML=authPage();
+    return;
+  }
   const navItems=[
-    {id:'containers',label:'Containers',icon:'layout-dashboard'},
+    {id:'containers',label:'Apps',icon:'layout-dashboard'},
     {id:'compose',label:'Compose',icon:'layers'},
-    {id:'nginx',label:'Nginx',icon:'server'},
     {id:'deploy',label:'Deploy',icon:'rocket'},
     {id:'settings',label:'Settings',icon:'settings'},
   ];
@@ -361,6 +405,8 @@ function render(){
     }).join('')+
     '</div>'+
     '<div style="padding:12px 16px;border-top:1px solid var(--border)">'+
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">'+escHtml((S.currentUser&&S.currentUser.username)||'')+' · '+escHtml((S.currentUser&&S.currentUser.role)||'')+'</div>'+
+      '<button class="btn btn-xs" onclick="logout()" style="width:100%;margin-bottom:8px">Log out</button>'+
       '<a href="https://github.com/Yash121l/Vessel" target="_blank" style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">'+
         ico('github',13)+'GitHub</a>'+
     '</div></nav>';
@@ -373,7 +419,22 @@ function render(){
       '<div style="padding:28px 32px;max-width:1400px;margin:0 auto">'+errBanner+content+'</div>'+
     '</div>';
 }
-// ── Containers page ───────────────────────────────────────────────────────────
+function authPage(){
+  const setup=S.authMode==='setup'||!S.configured;
+  const errBanner=S.error?'<div style="background:var(--red-dim);border:1px solid #ef444430;border-radius:var(--r);padding:10px 12px;margin-bottom:14px;color:var(--red);font-size:13px">'+escHtml(S.error)+'</div>':'';
+  return'<div style="width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg)">'+
+    '<form onsubmit="authSubmit(event)" class="card" style="width:100%;max-width:380px">'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:22px">'+
+        '<div style="width:36px;height:36px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center">'+ico('anchor',18,'#fff')+'</div>'+
+        '<div><div style="font-weight:700;font-size:16px">Vessel</div><div style="font-size:12px;color:var(--muted)">'+(setup?'Create owner account':'Sign in')+'</div></div>'+
+      '</div>'+errBanner+
+      '<div class="fg"><label>Username</label><input name="username" value="admin" autocomplete="username" required></div>'+
+      '<div class="fg"><label>Password</label><input name="password" type="password" minlength="'+(setup?'12':'1')+'" autocomplete="'+(setup?'new-password':'current-password')+'" required></div>'+
+      (setup?'<div style="font-size:12px;color:var(--muted);margin:-4px 0 18px">Use at least 12 characters. This protects deployment, logs, and host controls.</div>':'')+
+      '<button class="btn-primary" style="width:100%">'+(setup?'Create admin':'Log in')+'</button>'+
+    '</form></div>';
+}
+// ── Apps page ─────────────────────────────────────────────────────────────────
 function pageContainers(){
   const managed=S.deployments.filter(d=>!d.imported);
   const imported=S.deployments.filter(d=>d.imported);
@@ -385,7 +446,7 @@ function pageContainers(){
   const untracked=S.containers.filter(c=>!c.managed_by_vessel&&!trackedIds.has(c.id)&&!trackedIds.has(c.id.slice(0,12))&&!trackedNames.has(c.name));
   const running=S.containers.filter(c=>c.state==='running').length;
   let h='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px">'+
-    '<div><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Containers</h1>'+
+    '<div><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Apps</h1>'+
       '<p style="color:var(--muted);font-size:13px;margin-top:4px"><span style="color:var(--green);font-weight:600">'+running+' running</span> · '+S.containers.length+' total</p></div>'+
     '<div style="display:flex;gap:8px">'+
       '<button class="btn btn-sm" onclick="load()" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
@@ -597,12 +658,13 @@ function pageDeploy(){
 }
 function deployTemplates(){
   const apps=S.apps;
+  const selected=apps.find(a=>a.id===S.selectedApp);
   if(!apps.length)return'<div style="color:var(--muted);text-align:center;padding:40px">Loading templates…</div>';
   return'<form onsubmit="deploy(event)">'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:24px">'+
     apps.map(a=>'<label style="cursor:pointer">'+
-      '<input type="radio" name="app_id" value="'+a.id+'" style="display:none" onchange="selectApp(\''+a.id+'\')" required>'+
-      '<div id="ac-'+a.id+'" style="background:var(--surface);border:2px solid var(--border);border-radius:var(--r2);padding:18px 12px;text-align:center;transition:all .15s">'+
+      '<input type="radio" name="app_id" value="'+a.id+'" style="display:none" onchange="selectApp(\''+a.id+'\')" '+(S.selectedApp===a.id?'checked':'')+' required>'+
+      '<div id="ac-'+a.id+'" style="background:var(--surface);border:2px solid '+(S.selectedApp===a.id?'var(--accent)':'var(--border)')+';border-radius:var(--r2);padding:18px 12px;text-align:center;transition:all .15s">'+
         '<div style="display:flex;justify-content:center;margin-bottom:10px">'+imgAvatar(a.image,44)+'</div>'+
         '<div style="font-weight:600;font-size:13px">'+(a.name||a.id)+'</div>'+
         '<div style="font-size:11px;color:var(--muted);margin-top:3px">'+(a.category||'')+'</div>'+
@@ -613,9 +675,7 @@ function deployTemplates(){
         '<div class="fg"><label>Deployment Name *</label><input name="dname" placeholder="my-app" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required></div>'+
         '<div class="fg"><label>Custom Domain (optional)</label><input name="domain" placeholder="app.example.com"></div>'+
       '</div>'+
-      '<div class="fg"><label>Environment Variables (KEY=VALUE, one per line)</label>'+
-        '<textarea name="env" rows="5" placeholder="SECRET_KEY=abc123&#10;ADMIN_EMAIL=you@example.com" style="font-family:var(--mono);font-size:12px"></textarea></div>'+
-      '<div id="env-hints" style="margin-bottom:16px"></div>'+
+      '<div id="env-fields" style="margin-bottom:16px">'+envFields(selected)+'</div>'+
       '<div style="display:flex;gap:8px;justify-content:flex-end">'+
         '<button type="button" class="btn" onclick="nav(\'containers\')">Cancel</button>'+
         '<button type="submit" class="btn-primary" style="display:flex;align-items:center;gap:6px"'+(S.deploying?' disabled':'')+'>'+
@@ -624,17 +684,55 @@ function deployTemplates(){
     '</div></form>';
 }
 function selectApp(id){
+  S.selectedApp=id;
   S.apps.forEach(a=>{const el=document.getElementById('ac-'+a.id);if(el)el.style.borderColor=a.id===id?'var(--accent)':'var(--border)'});
   const app=S.apps.find(a=>a.id===id);
-  const hints=document.getElementById('env-hints');
-  if(!hints||!app||!app.env_vars)return;
-  const req=app.env_vars.filter(e=>e.required);
-  if(!req.length){hints.innerHTML='';return}
-  hints.innerHTML='<div style="background:var(--surface2);border-radius:var(--r);padding:12px 16px">'+
-    '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Required variables</div>'+
-    req.map(e=>'<div style="display:flex;gap:12px;margin-bottom:6px;font-size:12px;align-items:baseline">'+
-      '<code style="color:var(--accent);min-width:200px;font-family:var(--mono);flex-shrink:0">'+e.key+'</code>'+
-      '<span style="color:var(--muted)">'+e.description+'</span></div>').join('')+'</div>';
+  const fields=document.getElementById('env-fields');
+  if(fields)fields.innerHTML=envFields(app);
+}
+function envFields(app){
+  if(!app)return'<div style="background:var(--surface2);border-radius:var(--r);padding:14px 16px;color:var(--muted);font-size:13px">Choose a template to configure its required settings.</div>';
+  const vars=app.env_vars||[];
+  if(!vars.length)return'';
+  return'<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Configuration</div>'+
+    vars.map(e=>{
+      const id='env_'+e.key;
+      const type=e.secret?'password':'text';
+      const val=escAttr(e.default||'');
+      return'<div class="fg" style="margin-bottom:12px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
+          '<label style="margin-bottom:5px">'+e.key+(e.required?' *':'')+'</label>'+
+          (e.secret?'<button type="button" class="btn btn-xs" onclick="genSecret(\''+id+'\')">Generate</button>':'')+
+        '</div>'+
+        '<input id="'+id+'" name="'+id+'" type="'+type+'" value="'+val+'" placeholder="'+escAttr(e.description||e.key)+'" '+(e.required?'required':'')+'>'+
+        (e.description?'<div style="font-size:11px;color:var(--muted);margin-top:4px">'+escHtml(e.description)+'</div>':'')+
+      '</div>';
+    }).join('')+
+  '</div>';
+}
+function genSecret(id){
+  const el=document.getElementById(id);if(!el)return;
+  const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);
+  el.value=Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function roleRank(r){return{viewer:10,operator:20,admin:30,owner:40}[r]||0}
+function canAdmin(){return S.currentUser&&roleRank(S.currentUser.role)>=30}
+async function createUser(e){
+  e.preventDefault();const f=e.target;
+  try{
+    await api('POST','/users',{username:f.username.value,role:f.role.value,password:f.password.value});
+    f.reset();f.role.value='viewer';await loadUsers();
+  }catch(err){set({error:err.message})}
+}
+async function updateUser(id){
+  const role=document.getElementById('role-'+id).value;
+  const password=document.getElementById('pw-'+id).value;
+  try{await api('PUT','/users/'+id,{role,password});await loadUsers()}catch(err){set({error:err.message})}
+}
+async function deleteUser(id,name){
+  if(!confirm('Delete user "'+name+'"?'))return;
+  try{await api('DELETE','/users/'+id);await loadUsers()}catch(err){set({error:err.message})}
 }
 function deployCustomForm(){
   const sel=S.hubSelected;
@@ -918,16 +1016,49 @@ function pageSettings(){
   function row(l,v){return'<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted);font-size:13px">'+l+'</span><code style="font-family:var(--mono);font-size:12px;color:var(--accent2)">'+v+'</code></div>'}
   return'<div>'+
     '<div style="margin-bottom:24px"><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Settings</h1></div>'+
-    '<div class="card" style="max-width:520px">'+
+    '<div class="card" style="max-width:680px;margin-bottom:24px">'+
+      row('Signed in as',escHtml((S.currentUser&&S.currentUser.username)||''))+
+      row('Role',escHtml((S.currentUser&&S.currentUser.role)||''))+
       row('Version','0.1.0')+row('Data directory','/var/lib/vessel')+
       row('Config file','/etc/vessel/config.yaml')+row('UI port','4800')+
       '<div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);display:flex;gap:10px">'+
         '<a href="https://github.com/Yash121l/Vessel" target="_blank" class="btn btn-sm" style="display:flex;align-items:center;gap:6px">'+ico('github',13)+' View on GitHub</a>'+
       '</div>'+
-    '</div></div>';
+    '</div>'+
+    (canAdmin()?usersPanel():'')+
+  '</div>';
+}
+function usersPanel(){
+  const roles=['viewer','operator','admin'].concat(S.currentUser&&S.currentUser.role==='owner'?['owner']:[]);
+  const roleOptions=(selected)=>roles.map(r=>'<option value="'+r+'"'+(selected===r?' selected':'')+'>'+r+'</option>').join('');
+  const rows=(S.users||[]).map(u=>{
+    const self=S.currentUser&&u.id===S.currentUser.id;
+    const editable=!self&&(S.currentUser.role==='owner'||u.role!=='owner');
+    return'<tr>'+
+      '<td><span style="font-weight:600">'+escHtml(u.username)+'</span>'+(self?' <span class="tag tag-active">you</span>':'')+'</td>'+
+      '<td>'+(editable?'<select id="role-'+u.id+'" style="width:120px">'+roleOptions(u.role)+'</select>':'<span class="tag tag-imported">'+escHtml(u.role)+'</span>')+'</td>'+
+      '<td style="max-width:220px">'+(editable?'<input id="pw-'+u.id+'" type="password" placeholder="New password" autocomplete="new-password">':'')+'</td>'+
+      '<td style="text-align:right">'+(editable?'<button class="btn btn-sm" onclick="updateUser(\''+u.id+'\')">Save</button> <button class="btn-danger btn-sm" onclick="deleteUser(\''+u.id+'\',\''+escAttr(u.username)+'\')">Delete</button>':'')+'</td>'+
+    '</tr>';
+  }).join('');
+  return'<div class="card" style="max-width:900px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
+      '<div><div style="font-weight:700;font-size:15px">Users & Permissions</div>'+
+      '<div style="font-size:12px;color:var(--muted);margin-top:3px">Viewer can inspect, operator can deploy/manage apps, admin can manage host settings, owner can manage every role.</div></div>'+
+      '<button class="btn btn-sm" onclick="loadUsers()">Refresh</button></div>'+
+    '<form onsubmit="createUser(event)" style="display:grid;grid-template-columns:1fr 130px 1fr auto;gap:8px;margin-bottom:18px">'+
+      '<input name="username" placeholder="username" autocomplete="off" required>'+
+      '<select name="role">'+roleOptions('viewer')+'</select>'+
+      '<input name="password" type="password" placeholder="temporary password" autocomplete="new-password" required>'+
+      '<button class="btn-primary">Add User</button>'+
+    '</form>'+
+    '<table class="tbl"><thead><tr><th>User</th><th>Role</th><th>Password</th><th></th></tr></thead><tbody>'+
+      (rows||'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">No users loaded</td></tr>')+
+    '</tbody></table>'+
+  '</div>';
 }
 // ── Boot ──────────────────────────────────────────────────────────────────────
-set({});load();
+render();boot();
 </script>
 </body>
 </html>`

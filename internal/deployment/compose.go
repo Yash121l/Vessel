@@ -22,12 +22,12 @@ type ComposeFile struct {
 
 // ComposeService represents a single service in a Compose file.
 type ComposeService struct {
-	Image       string            `yaml:"image"`
-	Restart     string            `yaml:"restart"`
-	Ports       []string          `yaml:"ports,omitempty"`
-	Environment map[string]string `yaml:"environment,omitempty"`
-	Volumes     []string          `yaml:"volumes,omitempty"`
-	Networks    []string          `yaml:"networks,omitempty"`
+	Image       string                        `yaml:"image"`
+	Restart     string                        `yaml:"restart"`
+	Ports       []string                      `yaml:"ports,omitempty"`
+	Environment map[string]string             `yaml:"environment,omitempty"`
+	Volumes     []string                      `yaml:"volumes,omitempty"`
+	Networks    []string                      `yaml:"networks,omitempty"`
 	DependsOn   map[string]DependsOnCondition `yaml:"depends_on,omitempty"`
 	HealthCheck *ComposeHealthCheck           `yaml:"healthcheck,omitempty"`
 	Labels      map[string]string             `yaml:"labels,omitempty"`
@@ -83,14 +83,21 @@ func GenerateCompose(tmpl *registry.AppTemplate, d *store.Deployment) (*ComposeF
 		},
 	}
 
-	// Ports — only expose if no domain (Caddy handles routing when domain is set)
-	if d.Domain == "" {
-		for _, p := range tmpl.Ports {
-			proto := p.Protocol
-			if proto == "" {
-				proto = "tcp"
-			}
-			mainSvc.Ports = append(mainSvc.Ports, fmt.Sprintf("%d:%d/%s", p.External, p.Internal, proto))
+	// Ports are bound to localhost when a domain is configured so Caddy can
+	// reach the app without exposing the container port publicly.
+	for _, p := range tmpl.Ports {
+		proto := p.Protocol
+		if proto == "" {
+			proto = "tcp"
+		}
+		external := p.External
+		if external == 0 {
+			external = p.Internal
+		}
+		if d.Domain != "" {
+			mainSvc.Ports = append(mainSvc.Ports, fmt.Sprintf("127.0.0.1:%d:%d/%s", external, p.Internal, proto))
+		} else {
+			mainSvc.Ports = append(mainSvc.Ports, fmt.Sprintf("%d:%d/%s", external, p.Internal, proto))
 		}
 	}
 

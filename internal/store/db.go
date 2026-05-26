@@ -39,6 +39,7 @@ func (db *DB) Migrate() error {
 		`ALTER TABLE deployments ADD COLUMN container_id TEXT`,
 		`ALTER TABLE deployments ADD COLUMN image TEXT`,
 		`ALTER TABLE deployments ADD COLUMN ports TEXT`,
+		`ALTER TABLE users ADD COLUMN last_login_at DATETIME`,
 	}
 	for _, m := range migrations {
 		// Ignore errors — column likely already exists
@@ -75,9 +76,32 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id               TEXT PRIMARY KEY,
+    username         TEXT NOT NULL UNIQUE,
+    role             TEXT NOT NULL,
+    password_hash    TEXT NOT NULL,
+    created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_login_at    DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TRIGGER IF NOT EXISTS deployments_updated_at
     AFTER UPDATE ON deployments
     BEGIN
         UPDATE deployments SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+
+CREATE TRIGGER IF NOT EXISTS users_updated_at
+    AFTER UPDATE ON users
+    BEGIN
+        UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END;
 `

@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Yash121l/Vessel/internal/config"
 	"github.com/Yash121l/Vessel/internal/deployment"
 	"github.com/Yash121l/Vessel/internal/proxy"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
+	"github.com/gin-gonic/gin"
 )
 
 // Start initializes and runs the Vessel HTTP server.
@@ -94,13 +94,27 @@ func Start(cfg *config.Config) error {
 
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if origin != "" {
+			if sameOrigin(origin, c.Request.Host) {
+				c.Header("Access-Control-Allow-Origin", origin)
+				c.Header("Vary", "Origin")
+			} else {
+				c.AbortWithStatus(403)
+				return
+			}
+		}
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Header("Access-Control-Allow-Credentials", "true")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
 		}
 		c.Next()
 	}
+}
+
+func sameOrigin(origin, host string) bool {
+	return origin == "http://"+host || origin == "https://"+host
 }

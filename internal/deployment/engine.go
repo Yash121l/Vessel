@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/Yash121l/Vessel/internal/config"
 	"github.com/Yash121l/Vessel/internal/docker"
 	"github.com/Yash121l/Vessel/internal/proxy"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
+	"github.com/google/uuid"
 )
 
 // Engine manages the lifecycle of deployments.
@@ -113,13 +113,34 @@ func (e *Engine) Deploy(ctx context.Context, req DeployRequest) (*store.Deployme
 
 	// Configure reverse proxy if domain is set
 	if req.Domain != "" {
-		if err := e.proxy.AddRoute(req.Domain, tmpl.ProxyPort, req.Name); err != nil {
+		if err := e.proxy.AddRoute(req.Domain, proxyTargetPort(tmpl), req.Name); err != nil {
 			// Non-fatal: deployment is running, proxy config failed
 			fmt.Printf("warning: proxy config failed: %v\n", err)
 		}
 	}
 
 	return d, nil
+}
+
+func proxyTargetPort(tmpl *registry.AppTemplate) int {
+	for _, p := range tmpl.Ports {
+		if p.Internal == tmpl.ProxyPort {
+			if p.External != 0 {
+				return p.External
+			}
+			return p.Internal
+		}
+	}
+	if tmpl.ProxyPort != 0 {
+		return tmpl.ProxyPort
+	}
+	if len(tmpl.Ports) > 0 {
+		if tmpl.Ports[0].External != 0 {
+			return tmpl.Ports[0].External
+		}
+		return tmpl.Ports[0].Internal
+	}
+	return 80
 }
 
 // Stop stops a running deployment.
@@ -360,6 +381,7 @@ func (e *Engine) SyncImportedStatus(ctx context.Context) error {
 	}
 	return nil
 }
+
 // ComposeServiceInfo holds runtime info about a single service in a compose stack.
 type ComposeServiceInfo struct {
 	Name    string `json:"name"`
