@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/Yash121l/Vessel/internal/config"
+	"github.com/Yash121l/Vessel/internal/docker"
 	"github.com/Yash121l/Vessel/internal/proxy"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
