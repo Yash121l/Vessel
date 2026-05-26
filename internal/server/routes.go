@@ -73,6 +73,7 @@ func registerRoutes(
 	r.DELETE("/nginx/sites/:name", nginxDeleteSite(ngx))
 	r.GET("/nginx/logs/:type", nginxGetLogs(ngx))
 	r.GET("/nginx/logs/:type/stream", nginxStreamLogs(ngx))
+	r.GET("/nginx/stats", nginxGetStats(ngx))
 
 	// Health
 	r.GET("/health", func(c *gin.Context) {
@@ -690,8 +691,14 @@ func nginxDeleteSite(ngx *nginx.Manager) gin.HandlerFunc {
 	}
 }
 
-func nginxGetLogs(ngx *nginx.Manager) gin.HandlerFunc {
+func nginxGetStats(ngx *nginx.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		lines := 5000
+		c.JSON(200, ngx.GetStats(lines))
+	}
+}
+
+func nginxGetLogs(ngx *nginx.Manager) gin.HandlerFunc {	return func(c *gin.Context) {
 		n := 200
 		lines, err := ngx.TailLog(c.Param("type"), n)
 		if err != nil {
