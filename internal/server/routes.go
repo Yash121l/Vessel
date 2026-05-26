@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/Yash121l/Vessel/internal/config"
 	"github.com/Yash121l/Vessel/internal/deployment"
+	"github.com/Yash121l/Vessel/internal/docker"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
 )
@@ -39,6 +42,14 @@ func registerRoutes(
 
 	// Logs (SSE streaming)
 	r.GET("/deployments/:id/logs", streamLogs(engine))
+
+	// Docker discovery
+	r.GET("/docker/containers", listDockerContainers())
+	r.POST("/docker/import", importContainer(db))
+	r.GET("/docker/containers/:id/logs", streamContainerLogs())
+	r.POST("/docker/containers/:id/stop", stopContainer())
+	r.POST("/docker/containers/:id/start", startContainer())
+	r.POST("/docker/containers/:id/restart", restartContainer())
 
 	// Settings
 	r.GET("/settings", getSettings(db))
@@ -268,13 +279,201 @@ func updateSettings(db *store.DB) gin.HandlerFunc {
 // serveUI returns a handler that serves the embedded web UI.
 func serveUI() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// In production, the UI is embedded via go:embed.
-		// During development, this falls through to the API.
 		if c.Request.URL.Path == "/" || c.Request.URL.Path == "" {
 			c.Header("Content-Type", "text/html")
 			c.String(http.StatusOK, uiHTML)
 			return
 		}
 		c.Status(404)
+	}
+}
+
+// --- Docker discovery ---
+
+func listDockerContainers() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+		containers, err := docker.ListContainers(ctx)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		if containers == nil {
+			containers = []docker.Container{}
+		}
+		c.JSON(200, gin.H{"containers": containers})
+	}
+}
+
+type importContainerRequest struct {
+	ContainerID string `json:"container_id" binding:"required"`
+	Name        string `json:"name"`
+}
+
+func importContainer(db *store.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req importContainerRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+
+		containers, err := docker.ListContainers(ctx)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+
+		var found *docker.Container
+		for i := range containers {
+			if containers[i].ID == req.ContainerID ||
+				strings.HasPrefix(containers[i].ID, req.ContainerID) ||
+				containers[i].Name == req.ContainerID {
+				found = &containers[i]
+				break
+			}
+		}
+		if found == nil {
+			c.JSON(404, gin.H{"error": "container not found"})
+			return
+		}
+
+		name := req.Name
+		if name == "" {
+			name = found.Name
+		}
+
+		// Check not already imported
+		existing, _ := db.GetDeploymentByName(name)
+		if existing != nil {
+			c.JSON(409, gin.H{"error": "already imported as: " + name})
+			return
+		}
+
+		status := "running"
+		if found.State != "running" {
+			status = "stopped"
+		}
+
+		d := &store.Deployment{
+			ID:          uuid.New().String(),
+			Name:        name,
+			AppID:       guessAppID(found.Image, found.Name),
+			Status:      status,
+			ComposeDir:  "",
+			Imported:    true,
+			ContainerID: found.ID,
+			Image:       found.Image,
+			Ports:       strings.Join(found.Ports, ", "),
+		}
+
+		if err := db.CreateDeployment(d); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(201, d)
+	}
+}
+
+func streamContainerLogs() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+
+		ctx, cancel := context.WithCancel(c.Request.Context())
+		defer cancel()
+
+		lines := make(chan string, 100)
+		go func() {
+			defer close(lines)
+			_ = docker.ContainerLogs(ctx, id, lines)
+		}()
+
+		c.Stream(func(w io.Writer) bool {
+			select {
+			case line, ok := <-lines:
+				if !ok {
+					return false
+				}
+				fmt.Fprintf(w, "data: %s\n\n", line)
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		})
+	}
+}
+
+func stopContainer() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+		if err := docker.StopContainer(ctx, c.Param("id")); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "stopped"})
+	}
+}
+
+func startContainer() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+		if err := docker.StartContainer(ctx, c.Param("id")); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "started"})
+	}
+}
+
+func restartContainer() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+		if err := docker.RestartContainer(ctx, c.Param("id")); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "restarted"})
+	}
+}
+
+// guessAppID maps a container image/name to a known Vessel app template ID.
+func guessAppID(image, name string) string {
+	s := strings.ToLower(image + " " + name)
+	switch {
+	case strings.Contains(s, "metabase"):
+		return "metabase"
+	case strings.Contains(s, "n8n"):
+		return "n8n"
+	case strings.Contains(s, "umami"):
+		return "umami"
+	case strings.Contains(s, "plausible"):
+		return "plausible"
+	case strings.Contains(s, "open-webui") || strings.Contains(s, "openwebui"):
+		return "open-webui"
+	case strings.Contains(s, "plane"):
+		return "plane"
+	case strings.Contains(s, "mysql") || strings.Contains(s, "mariadb"):
+		return "mysql"
+	case strings.Contains(s, "postgres"):
+		return "postgres"
+	case strings.Contains(s, "redis"):
+		return "redis"
+	case strings.Contains(s, "mongo"):
+		return "mongodb"
+	case strings.Contains(s, "nginx"):
+		return "nginx"
+	default:
+		return "custom"
 	}
 }

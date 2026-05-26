@@ -8,15 +8,19 @@ import (
 
 // Deployment represents a deployed application instance.
 type Deployment struct {
-	ID         string            `json:"id"`
-	Name       string            `json:"name"`
-	AppID      string            `json:"app_id"`
-	Status     string            `json:"status"` // stopped, running, error, updating
-	Domain     string            `json:"domain"`
-	ComposeDir string            `json:"compose_dir"`
-	Env        map[string]string `json:"env,omitempty"`
-	CreatedAt  time.Time         `json:"created_at"`
-	UpdatedAt  time.Time         `json:"updated_at"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	AppID       string            `json:"app_id"`
+	Status      string            `json:"status"` // stopped, running, error, updating
+	Domain      string            `json:"domain"`
+	ComposeDir  string            `json:"compose_dir"`
+	Imported    bool              `json:"imported"`     // true = discovered from docker ps, not deployed by Vessel
+	ContainerID string            `json:"container_id"` // for imported containers
+	Image       string            `json:"image"`        // for imported containers
+	Ports       string            `json:"ports"`        // for imported containers, comma-separated
+	Env         map[string]string `json:"env,omitempty"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
 }
 
 // CreateDeployment inserts a new deployment record.
@@ -27,10 +31,14 @@ func (db *DB) CreateDeployment(d *Deployment) error {
 	}
 	defer tx.Rollback()
 
+	imported := 0
+	if d.Imported {
+		imported = 1
+	}
 	_, err = tx.Exec(`
-		INSERT INTO deployments (id, name, app_id, status, domain, compose_dir)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		d.ID, d.Name, d.AppID, d.Status, d.Domain, d.ComposeDir,
+		INSERT INTO deployments (id, name, app_id, status, domain, compose_dir, imported, container_id, image, ports)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.ID, d.Name, d.AppID, d.Status, d.Domain, d.ComposeDir, imported, d.ContainerID, d.Image, d.Ports,
 	)
 	if err != nil {
 		return fmt.Errorf("insert deployment: %w", err)
@@ -52,16 +60,20 @@ func (db *DB) CreateDeployment(d *Deployment) error {
 // GetDeployment retrieves a deployment by ID.
 func (db *DB) GetDeployment(id string) (*Deployment, error) {
 	d := &Deployment{}
+	var imported int
 	err := db.QueryRow(`
-		SELECT id, name, app_id, status, COALESCE(domain,''), compose_dir, created_at, updated_at
+		SELECT id, name, app_id, status, COALESCE(domain,''), compose_dir, imported,
+		       COALESCE(container_id,''), COALESCE(image,''), COALESCE(ports,''), created_at, updated_at
 		FROM deployments WHERE id = ?`, id,
-	).Scan(&d.ID, &d.Name, &d.AppID, &d.Status, &d.Domain, &d.ComposeDir, &d.CreatedAt, &d.UpdatedAt)
+	).Scan(&d.ID, &d.Name, &d.AppID, &d.Status, &d.Domain, &d.ComposeDir, &imported,
+		&d.ContainerID, &d.Image, &d.Ports, &d.CreatedAt, &d.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	d.Imported = imported == 1
 	d.Env, err = db.getEnv(d.ID)
 	return d, err
 }
@@ -69,16 +81,20 @@ func (db *DB) GetDeployment(id string) (*Deployment, error) {
 // GetDeploymentByName retrieves a deployment by name.
 func (db *DB) GetDeploymentByName(name string) (*Deployment, error) {
 	d := &Deployment{}
+	var imported int
 	err := db.QueryRow(`
-		SELECT id, name, app_id, status, COALESCE(domain,''), compose_dir, created_at, updated_at
+		SELECT id, name, app_id, status, COALESCE(domain,''), compose_dir, imported,
+		       COALESCE(container_id,''), COALESCE(image,''), COALESCE(ports,''), created_at, updated_at
 		FROM deployments WHERE name = ?`, name,
-	).Scan(&d.ID, &d.Name, &d.AppID, &d.Status, &d.Domain, &d.ComposeDir, &d.CreatedAt, &d.UpdatedAt)
+	).Scan(&d.ID, &d.Name, &d.AppID, &d.Status, &d.Domain, &d.ComposeDir, &imported,
+		&d.ContainerID, &d.Image, &d.Ports, &d.CreatedAt, &d.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	d.Imported = imported == 1
 	d.Env, err = db.getEnv(d.ID)
 	return d, err
 }
@@ -86,7 +102,8 @@ func (db *DB) GetDeploymentByName(name string) (*Deployment, error) {
 // ListDeployments returns all deployments.
 func (db *DB) ListDeployments() ([]*Deployment, error) {
 	rows, err := db.Query(`
-		SELECT id, name, app_id, status, COALESCE(domain,''), compose_dir, created_at, updated_at
+		SELECT id, name, app_id, status, COALESCE(domain,''), compose_dir, imported,
+		       COALESCE(container_id,''), COALESCE(image,''), COALESCE(ports,''), created_at, updated_at
 		FROM deployments ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
@@ -96,9 +113,12 @@ func (db *DB) ListDeployments() ([]*Deployment, error) {
 	var deployments []*Deployment
 	for rows.Next() {
 		d := &Deployment{}
-		if err := rows.Scan(&d.ID, &d.Name, &d.AppID, &d.Status, &d.Domain, &d.ComposeDir, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		var imported int
+		if err := rows.Scan(&d.ID, &d.Name, &d.AppID, &d.Status, &d.Domain, &d.ComposeDir, &imported,
+			&d.ContainerID, &d.Image, &d.Ports, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return nil, err
 		}
+		d.Imported = imported == 1
 		deployments = append(deployments, d)
 	}
 	return deployments, rows.Err()

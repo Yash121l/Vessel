@@ -30,19 +30,37 @@ func Open(path string) (*DB, error) {
 // Migrate runs all schema migrations.
 func (db *DB) Migrate() error {
 	_, err := db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+	// Run additive migrations for existing databases
+	migrations := []string{
+		`ALTER TABLE deployments ADD COLUMN imported INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE deployments ADD COLUMN container_id TEXT`,
+		`ALTER TABLE deployments ADD COLUMN image TEXT`,
+		`ALTER TABLE deployments ADD COLUMN ports TEXT`,
+	}
+	for _, m := range migrations {
+		// Ignore errors — column likely already exists
+		_, _ = db.Exec(m)
+	}
+	return nil
 }
 
 const schema = `
 CREATE TABLE IF NOT EXISTS deployments (
-    id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL UNIQUE,
-    app_id      TEXT NOT NULL,
-    status      TEXT NOT NULL DEFAULT 'stopped',
-    domain      TEXT,
-    compose_dir TEXT NOT NULL,
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL UNIQUE,
+    app_id       TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'stopped',
+    domain       TEXT,
+    compose_dir  TEXT NOT NULL,
+    imported     INTEGER NOT NULL DEFAULT 0,
+    container_id TEXT,
+    image        TEXT,
+    ports        TEXT,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS deployment_env (
