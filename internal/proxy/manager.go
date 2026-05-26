@@ -19,6 +19,46 @@ func NewManager(caddyDir string) *Manager {
 	return &Manager{caddyDir: caddyDir}
 }
 
+// EnsureMainConfig writes the Vessel Caddyfile to /etc/caddy/Caddyfile.
+// It writes a placeholder .caddy file so the glob import never fails on an
+// empty directory.
+func (m *Manager) EnsureMainConfig() error {
+	sitesDir := m.sitesDir()
+	if err := os.MkdirAll(sitesDir, 0755); err != nil {
+		return err
+	}
+
+	// Write a no-op placeholder so the glob always matches at least one file
+	placeholder := filepath.Join(sitesDir, "_placeholder.caddy")
+	if _, err := os.Stat(placeholder); os.IsNotExist(err) {
+		if err := os.WriteFile(placeholder, []byte("# Vessel placeholder\n"), 0644); err != nil {
+			return err
+		}
+	}
+
+	// Write to /etc/caddy/Caddyfile (where Caddy's systemd unit looks by default)
+	etcCaddyfile := "/etc/caddy/Caddyfile"
+	if err := os.MkdirAll(filepath.Dir(etcCaddyfile), 0755); err != nil {
+		return err
+	}
+
+	// Only overwrite if it's ours or doesn't exist
+	existing, _ := os.ReadFile(etcCaddyfile)
+	if len(existing) > 0 && !strings.Contains(string(existing), "Vessel-managed") {
+		// User has a custom Caddyfile — don't touch it
+		return nil
+	}
+
+	content := fmt.Sprintf("# Vessel-managed Caddyfile\n# Do not edit manually\n\nimport %s/*.caddy\n", sitesDir)
+	if err := os.WriteFile(etcCaddyfile, []byte(content), 0644); err != nil {
+		return err
+	}
+
+	// Reload Caddy gracefully — ignore errors (Caddy may not be running yet)
+	_ = m.reload()
+	return nil
+}
+
 // AddRoute creates a Caddy site config for a deployment.
 func (m *Manager) AddRoute(domain string, internalPort int, deploymentName string) error {
 	if err := os.MkdirAll(m.sitesDir(), 0755); err != nil {
@@ -36,8 +76,7 @@ func (m *Manager) AddRoute(domain string, internalPort int, deploymentName strin
 		return err
 	}
 
-	path := m.sitePath(domain)
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(m.sitePath(domain), []byte(content), 0644); err != nil {
 		return err
 	}
 
@@ -53,44 +92,10 @@ func (m *Manager) RemoveRoute(domain string) error {
 	return m.reload()
 }
 
-// EnsureMainConfig writes the main Caddyfile that imports site configs.
-func (m *Manager) EnsureMainConfig() error {
-	if err := os.MkdirAll(m.sitesDir(), 0755); err != nil {
-		return err
-	}
-
-	mainCaddyfile := filepath.Join(m.caddyDir, "Caddyfile")
-	content := fmt.Sprintf(`# Vessel-managed Caddyfile
-# Do not edit manually — managed by Vessel
-
-import %s/*.caddy
-`, m.sitesDir())
-
-	// Only write if it doesn't exist or is managed by us
-	existing, err := os.ReadFile(mainCaddyfile)
-	if err == nil && !strings.Contains(string(existing), "Vessel-managed") {
-		// Don't overwrite a user-managed Caddyfile
-		return nil
-	}
-
-	if err := os.WriteFile(mainCaddyfile, []byte(content), 0644); err != nil {
-		return err
-	}
-
-	// Symlink to /etc/caddy/Caddyfile if it exists
-	etcCaddy := "/etc/caddy/Caddyfile"
-	if _, err := os.Stat(filepath.Dir(etcCaddy)); err == nil {
-		_ = os.Remove(etcCaddy)
-		_ = os.Symlink(mainCaddyfile, etcCaddy)
-	}
-
-	return m.reload()
-}
-
-// reload signals Caddy to reload its configuration.
+// reload signals Caddy to reload its configuration gracefully.
 func (m *Manager) reload() error {
-	// Try caddy reload first (graceful)
-	if err := exec.Command("caddy", "reload", "--config", filepath.Join(m.caddyDir, "Caddyfile")).Run(); err == nil {
+	// Try caddy reload first
+	if err := exec.Command("caddy", "reload", "--config", "/etc/caddy/Caddyfile").Run(); err == nil {
 		return nil
 	}
 	// Fall back to systemctl reload
@@ -102,7 +107,6 @@ func (m *Manager) sitesDir() string {
 }
 
 func (m *Manager) sitePath(domain string) string {
-	// Sanitize domain for use as filename
 	safe := strings.ReplaceAll(domain, ".", "_")
 	safe = strings.ReplaceAll(safe, "*", "wildcard")
 	return filepath.Join(m.sitesDir(), safe+".caddy")
