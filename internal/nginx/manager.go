@@ -78,25 +78,15 @@ type SiteFile struct {
 	ModTime time.Time `json:"mod_time"`
 }
 
-// ListSites returns all site configs from sites-available.
+// ListSites returns all site configs from sites-available and conf.d.
 func (m *Manager) ListSites() ([]SiteFile, error) {
 	available := filepath.Join(m.configRoot, "sites-available")
 	enabled := filepath.Join(m.configRoot, "sites-enabled")
 
-	entries, err := os.ReadDir(available)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Some setups use conf.d instead
-			return m.listConfD()
-		}
-		return nil, err
-	}
-
-	// Build set of enabled sites
+	// Build set of enabled sites (symlinks in sites-enabled)
 	enabledSet := map[string]bool{}
 	if ee, err := os.ReadDir(enabled); err == nil {
 		for _, e := range ee {
-			// Resolve symlink target name
 			target, err := os.Readlink(filepath.Join(enabled, e.Name()))
 			if err == nil {
 				enabledSet[filepath.Base(target)] = true
@@ -107,39 +97,46 @@ func (m *Manager) ListSites() ([]SiteFile, error) {
 	}
 
 	var sites []SiteFile
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		info, _ := e.Info()
-		sites = append(sites, SiteFile{
-			Name:    e.Name(),
-			Path:    filepath.Join(available, e.Name()),
-			Enabled: enabledSet[e.Name()],
-			ModTime: info.ModTime(),
-		})
-	}
-	return sites, nil
-}
 
-func (m *Manager) listConfD() ([]SiteFile, error) {
-	confD := filepath.Join(m.configRoot, "conf.d")
-	entries, err := os.ReadDir(confD)
-	if err != nil {
-		return nil, err
-	}
-	var sites []SiteFile
-	for _, e := range entries {
-		if e.IsDir() || (!strings.HasSuffix(e.Name(), ".conf") && !strings.HasSuffix(e.Name(), ".disabled")) {
-			continue
+	// Scan sites-available
+	if entries, err := os.ReadDir(available); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			info, _ := e.Info()
+			sites = append(sites, SiteFile{
+				Name:    e.Name(),
+				Path:    filepath.Join(available, e.Name()),
+				Enabled: enabledSet[e.Name()],
+				ModTime: info.ModTime(),
+			})
 		}
-		info, _ := e.Info()
-		sites = append(sites, SiteFile{
-			Name:    e.Name(),
-			Path:    filepath.Join(confD, e.Name()),
-			Enabled: strings.HasSuffix(e.Name(), ".conf"),
-			ModTime: info.ModTime(),
-		})
+	}
+
+	// Also scan conf.d (files ending in .conf are active, .disabled are not)
+	confD := filepath.Join(m.configRoot, "conf.d")
+	if entries, err := os.ReadDir(confD); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			if !strings.HasSuffix(name, ".conf") && !strings.HasSuffix(name, ".disabled") {
+				continue
+			}
+			info, _ := e.Info()
+			sites = append(sites, SiteFile{
+				Name:    name,
+				Path:    filepath.Join(confD, name),
+				Enabled: strings.HasSuffix(name, ".conf"),
+				ModTime: info.ModTime(),
+			})
+		}
+	}
+
+	if len(sites) == 0 {
+		return []SiteFile{}, nil
 	}
 	return sites, nil
 }
@@ -163,14 +160,21 @@ func (m *Manager) GetSite(name string) (*SiteFile, error) {
 	return nil, fmt.Errorf("site not found: %s", name)
 }
 
-// SaveSite writes content to a site config file.
+// SaveSite writes content to a site config file (preserves original path).
 func (m *Manager) SaveSite(name, content string) error {
+	// Find existing path first
+	sites, _ := m.ListSites()
+	for _, s := range sites {
+		if s.Name == name {
+			return os.WriteFile(s.Path, []byte(content), 0644)
+		}
+	}
+	// Default: write to sites-available
 	available := filepath.Join(m.configRoot, "sites-available")
 	if err := os.MkdirAll(available, 0755); err != nil {
 		return err
 	}
-	path := filepath.Join(available, name)
-	return os.WriteFile(path, []byte(content), 0644)
+	return os.WriteFile(filepath.Join(available, name), []byte(content), 0644)
 }
 
 // CreateSite creates a new site config from a template.

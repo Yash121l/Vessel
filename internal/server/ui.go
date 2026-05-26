@@ -217,18 +217,59 @@ function render(){
 function pageContainers(){
   const managed=S.deployments.filter(d=>!d.imported);
   const imported=S.deployments.filter(d=>d.imported);
-  const trackedIds=new Set(S.deployments.map(d=>d.container_id).filter(Boolean));
-  const untracked=S.containers.filter(c=>!c.managed_by_vessel&&!trackedIds.has(c.id));
+
+  // Build a set of tracked container IDs AND names to filter discovered
+  const trackedIds=new Set();
+  const trackedNames=new Set();
+  S.deployments.forEach(d=>{
+    if(d.container_id){
+      trackedIds.add(d.container_id);
+      trackedIds.add(d.container_id.slice(0,12)); // short ID
+    }
+    if(d.name) trackedNames.add(d.name);
+  });
+
+  const untracked=S.containers.filter(c=>
+    !c.managed_by_vessel &&
+    !trackedIds.has(c.id) &&
+    !trackedIds.has(c.id.slice(0,12)) &&
+    !trackedNames.has(c.name)
+  );
+
+  // Split untracked into running and exited
+  const untrackedRunning=untracked.filter(c=>c.state==='running');
+  const untrackedExited=untracked.filter(c=>c.state!=='running');
+
+  const running=S.containers.filter(c=>c.state==='running').length;
+  const total=S.containers.length;
+
   let h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">'+
     '<div><h1 style="font-size:19px;font-weight:700;letter-spacing:-.4px">Containers</h1>'+
-    '<p style="color:var(--muted);font-size:12px;margin-top:2px">'+S.containers.length+' on this host</p></div>'+
+    '<p style="color:var(--muted);font-size:12px;margin-top:2px">'+
+      '<span style="color:var(--green)">'+running+' running</span>'+
+      ' · '+total+' total on this host'+
+    '</p></div>'+
     '<div style="display:flex;gap:8px">'+
       '<button class="btn btn-sm" onclick="load()">↺ Refresh</button>'+
       '<button class="btn-primary btn-sm" onclick="nav(\'deploy\')">+ Deploy</button>'+
     '</div></div>';
-  if(managed.length){h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Vessel Managed</div>'+managed.map(cardManaged).join('')+'<div style="margin-bottom:24px"></div>'}
-  if(imported.length){h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Monitored</div>'+imported.map(cardImported).join('')+'<div style="margin-bottom:24px"></div>'}
-  if(untracked.length){h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Discovered — click Monitor to track</div>'+untracked.map(cardDiscovered).join('')}
+
+  if(managed.length){
+    h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Vessel Managed</div>'+
+      managed.map(cardManaged).join('')+'<div style="margin-bottom:24px"></div>';
+  }
+  if(imported.length){
+    h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Monitored</div>'+
+      imported.map(cardImported).join('')+'<div style="margin-bottom:24px"></div>';
+  }
+  if(untrackedRunning.length){
+    h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Running — click Monitor to track</div>'+
+      untrackedRunning.map(cardDiscovered).join('')+'<div style="margin-bottom:24px"></div>';
+  }
+  if(untrackedExited.length){
+    h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Stopped / Exited</div>'+
+      untrackedExited.map(cardDiscovered).join('');
+  }
   if(!managed.length&&!imported.length&&!untracked.length){
     h+='<div style="text-align:center;padding:72px 20px"><div style="font-size:44px;margin-bottom:14px">🚀</div>'+
       '<div style="font-size:16px;font-weight:600;margin-bottom:8px">No containers yet</div>'+
@@ -270,16 +311,26 @@ function cardImported(d){
 }
 
 function cardDiscovered(c){
-  const ports=c.ports&&c.ports.length?c.ports.slice(0,3).join(', '):'no ports';
-  return'<div class="card" style="margin-bottom:8px;border-style:dashed"><div style="display:flex;align-items:center;gap:12px">'+
-    '<div style="font-size:24px;width:36px;text-align:center;flex-shrink:0">'+icon(c.name)+'</div>'+
-    '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
-      '<span style="font-weight:600;font-size:14px">'+c.name+'</span>'+badge(c.state)+'</div>'+
-      '<div style="color:var(--muted);font-size:11px;margin-top:2px">'+c.image+' · '+ports+'</div></div>'+
-    '<div style="display:flex;gap:5px;flex-shrink:0">'+
-      '<button class="btn btn-sm" onclick="openLogs(\''+c.id+'\',\'c\',\''+c.name+'\')">Logs</button>'+
-      '<button class="btn-primary btn-sm" onclick="monitor(\''+c.id+'\',\''+c.name+'\')">Monitor</button>'+
-    '</div></div></div>';
+  const ports=c.ports&&c.ports.length?c.ports.slice(0,3).join(' · '):'no ports';
+  const isRunning=c.state==='running';
+  return'<div class="card" style="margin-bottom:8px;'+(isRunning?'':'opacity:.75;')+'">'+
+    '<div style="display:flex;align-items:center;gap:12px">'+
+      '<div style="font-size:24px;width:36px;text-align:center;flex-shrink:0">'+icon(c.name)+'</div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+          '<span style="font-weight:600;font-size:14px">'+c.name+'</span>'+badge(c.state)+
+        '</div>'+
+        '<div style="color:var(--muted);font-size:11px;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">'+
+          '<span>'+c.image+'</span>'+
+          (c.ports&&c.ports.length?'<span style="color:var(--accent2)">'+ports+'</span>':'')+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:5px;flex-shrink:0">'+
+        (isRunning?'<button class="btn btn-sm" onclick="openLogs(\''+c.id+'\',\'c\',\''+c.name+'\')">Logs</button>':'')+
+        (isRunning?'<button class="btn-primary btn-sm" onclick="monitor(\''+c.id+'\',\''+c.name+'\')">Monitor</button>':
+          '<button class="btn btn-sm" onclick="actC(\''+c.id+'\',\'start\',\''+c.name+'\')" style="opacity:.7">Start</button>')+
+      '</div>'+
+    '</div></div>';
 }
 
 function pageNginx(){
