@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -45,6 +47,7 @@ func registerRoutes(
 
 	// Docker discovery
 	r.GET("/docker/containers", listDockerContainers())
+	r.GET("/docker/compose/stacks", listComposeStacks())
 	r.POST("/docker/import", importContainer(db))
 	r.POST("/docker/deploy", deployCustomContainer(engine))
 	r.GET("/docker/search", dockerHubSearch())
@@ -579,6 +582,52 @@ func dockerHubSearch() gin.HandlerFunc {
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
 		c.Data(resp.StatusCode, "application/json", body)
+	}
+}
+
+// listComposeStacks runs `docker compose ls` and returns all stacks on the host.
+func listComposeStacks() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+
+		// --format json gives a JSON array
+		cmd := exec.CommandContext(ctx, "docker", "compose", "ls", "--all", "--format", "json")
+		out, err := cmd.Output()
+		if err != nil {
+			// fallback: return empty list rather than error
+			c.JSON(200, gin.H{"stacks": []interface{}{}})
+			return
+		}
+
+		// docker compose ls --format json outputs a JSON array directly
+		var raw []map[string]interface{}
+		if jsonErr := json.Unmarshal(out, &raw); jsonErr != nil {
+			c.JSON(200, gin.H{"stacks": []interface{}{}})
+			return
+		}
+
+		// Normalise field names (docker uses Title case: Name, Status, ConfigFiles)
+		type Stack struct {
+			Name        string `json:"name"`
+			Status      string `json:"status"`
+			ConfigFiles string `json:"config_files"`
+		}
+		stacks := make([]Stack, 0, len(raw))
+		for _, r := range raw {
+			s := Stack{}
+			if v, ok := r["Name"].(string); ok {
+				s.Name = v
+			}
+			if v, ok := r["Status"].(string); ok {
+				s.Status = v
+			}
+			if v, ok := r["ConfigFiles"].(string); ok {
+				s.ConfigFiles = v
+			}
+			stacks = append(stacks, s)
+		}
+		c.JSON(200, gin.H{"stacks": stacks})
 	}
 }
 

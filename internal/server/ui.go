@@ -141,7 +141,7 @@ function imgAvatar(image,size){
 const API='/api/v1';
 let S={
   page:'containers',nginxTab:'overview',deployTab:'templates',composeId:null,composeDetail:null,
-  deployments:[],apps:[],containers:[],
+  deployments:[],apps:[],containers:[],composeStacks:[],
   nginxStatus:null,nginxSites:[],nginxMainConfig:'',nginxLogs:[],nginxStats:null,
   editingSite:null,editingContent:'',newSiteMode:false,
   logs:'',logsTarget:null,logsEs:null,
@@ -177,6 +177,12 @@ async function loadNginxLogs(t){try{const d=await api('GET','/nginx/logs/'+t);se
 async function loadComposeDetail(id){
   try{const d=await api('GET','/deployments/'+id+'/compose');set({composeDetail:d,composeId:id})}
   catch(e){set({error:e.message})}
+}
+async function loadComposeStacks(){
+  try{
+    const[dd,ds]=await Promise.all([api('GET','/deployments'),api('GET','/docker/compose/stacks')]);
+    set({deployments:dd.deployments||[],composeStacks:ds.stacks||[]});
+  }catch(e){set({error:e.message})}
 }
 async function act(id,a){
   if(a==='stop'&&!confirm('Stop this deployment?'))return;
@@ -220,20 +226,76 @@ async function deployCustom(e){
 let hubTimer=null;
 function hubSearch(q){
   S.hubQuery=q;
+  // Update the query display without full re-render (avoids losing focus)
   clearTimeout(hubTimer);
-  if(!q.trim()){set({hubResults:[],hubSearching:false});return}
-  set({hubSearching:true});
+  if(!q.trim()){
+    S.hubResults=[];S.hubSearching=false;
+    renderHubResults();
+    return;
+  }
+  S.hubSearching=true;
+  renderHubResults();
   hubTimer=setTimeout(async()=>{
     try{
       const r=await fetch(API+'/docker/search?q='+encodeURIComponent(q));
       const d=await r.json();
-      set({hubResults:d.results||[],hubSearching:false});
-    }catch{set({hubSearching:false})}
-  },400);
+      S.hubResults=d.results||[];
+      S.hubSearching=false;
+      renderHubResults();
+    }catch{S.hubSearching=false;renderHubResults()}
+  },500);
+}
+function renderHubResults(){
+  const el=document.getElementById('hub-results');
+  if(!el)return;
+  if(S.hubSearching){
+    el.innerHTML='<div style="padding:12px 16px;color:var(--muted);font-size:13px;display:flex;align-items:center;gap:8px">'+ico('loader',14)+'Searching Docker Hub…</div>';
+    return;
+  }
+  if(!S.hubResults.length){el.innerHTML='';return}
+  el.innerHTML=S.hubResults.map(r=>{
+    const logo=r.logo_url&&r.logo_url.large?r.logo_url.large:(r.logo_url&&r.logo_url.small?r.logo_url.small:'');
+    const item=JSON.stringify({slug:r.slug,name:r.name,description:r.short_description||'',logo}).replace(/"/g,'&quot;');
+    return'<div class="hub-result" onclick="selectHub('+item+')">'+
+      (logo?'<img src="'+logo+'" width="36" height="36" style="border-radius:8px;object-fit:contain;background:var(--surface2);flex-shrink:0" onerror="this.style.display=\'none\'">':
+        imgAvatar(r.slug,36))+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-weight:600;font-size:13px;font-family:var(--mono)">'+escHtml(r.slug)+'</div>'+
+        '<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.short_description||'')+'</div>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">'+
+        (r.pull_count?fmtPulls(r.pull_count)+' pulls':'')+
+        (r.star_count?' · ★'+r.star_count:'')+
+      '</div>'+
+    '</div>';
+  }).join('');
 }
 function selectHub(item){
-  set({hubSelected:item,hubResults:[],hubQuery:item.slug});
-  const el=document.getElementById('cimage');if(el)el.value=item.slug;
+  if(typeof item==='string')item=JSON.parse(item.replace(/&quot;/g,'"'));
+  S.hubSelected=item;S.hubResults=[];S.hubQuery=item.slug;
+  const inp=document.getElementById('cimage');if(inp)inp.value=item.slug;
+  const qinp=document.getElementById('hubsearch');if(qinp)qinp.value=item.slug;
+  renderHubResults();
+  // Update selected banner without full re-render
+  const banner=document.getElementById('hub-selected-banner');
+  if(banner){
+    const logo=item.logo?'<img src="'+item.logo+'" width="40" height="40" style="border-radius:8px;object-fit:contain;background:var(--surface2);flex-shrink:0">':imgAvatar(item.slug,40);
+    banner.style.display='flex';
+    banner.innerHTML=logo+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-weight:600;font-family:var(--mono);font-size:14px">'+escHtml(item.slug)+'</div>'+
+        '<div style="font-size:12px;color:var(--muted2)">'+escHtml(item.description||'')+'</div>'+
+      '</div>'+
+      '<a href="https://hub.docker.com/r/'+escHtml(item.slug)+'" target="_blank" class="btn btn-xs" style="display:flex;align-items:center;gap:4px">'+ico('external-link',11)+' Hub</a>'+
+      '<button class="btn btn-xs" onclick="clearHubSelection()">Change</button>';
+  }
+}
+function clearHubSelection(){
+  S.hubSelected=null;S.hubQuery='';
+  const inp=document.getElementById('cimage');if(inp)inp.value='';
+  const qinp=document.getElementById('hubsearch');if(qinp){qinp.value='';qinp.focus();}
+  const banner=document.getElementById('hub-selected-banner');if(banner)banner.style.display='none';
+  renderHubResults();
 }
 function ngxAction(action){api('POST','/nginx/'+action).then(loadNginx).catch(e=>set({error:e.message}))}
 async function ngxTest(){try{const d=await api('GET','/nginx/test');alert(d.ok?'Config OK\n\n'+d.output:'Config Error\n\n'+d.output)}catch(e){set({error:e.message})}}
@@ -267,7 +329,7 @@ function nav(p){
   if(p==='containers')load();
   if(p==='deploy')loadApps();
   if(p==='nginx'){loadNginx();loadNginxConfig();}
-  if(p==='compose')load();
+  if(p==='compose')loadComposeStacks();
 }
 function badge(s){return'<span class="tag tag-'+(s||'stopped')+'"><span class="dot'+(s==='running'||s==='active'?' pulse':'')+'"></span>'+(s||'unknown')+'</span>'}
 function fmtBytes(b){if(!b)return'0 B';if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';if(b<1073741824)return(b/1048576).toFixed(1)+' MB';return(b/1073741824).toFixed(2)+' GB'}
@@ -405,6 +467,10 @@ function cardDiscovered(c){
 // ── Compose page ──────────────────────────────────────────────────────────────
 function pageCompose(){
   const managed=S.deployments.filter(d=>!d.imported&&d.compose_dir);
+  const dbNames=new Set(managed.map(d=>d.name));
+  const externalStacks=(S.composeStacks||[]).filter(s=>!dbNames.has(s.name));
+  const totalStacks=managed.length+externalStacks.length;
+
   if(S.composeDetail){
     const cd=S.composeDetail;
     const svcs=cd.services||[];
@@ -412,12 +478,12 @@ function pageCompose(){
     const running=svcs.filter(s=>s.state==='running').length;
     return'<div>'+
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">'+
-        '<button class="btn btn-sm" onclick="set({composeDetail:null,composeId:null})" style="display:flex;align-items:center;gap:5px">'+ico('chevron-right',12)+' Back</button>'+
+        '<button class="btn btn-sm" onclick="set({composeDetail:null,composeId:null})">← Back</button>'+
         '<div>'+
           '<h1 style="font-size:20px;font-weight:700;letter-spacing:-.5px">'+cd.deployment_name+'</h1>'+
           '<div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px">'+cd.compose_dir+'</div>'+
         '</div>'+
-        '<div style="margin-left:auto;display:flex;gap:8px">'+
+        '<div style="margin-left:auto">'+
           '<button class="btn btn-sm" onclick="loadComposeDetail(\''+cd.deployment_id+'\')" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
         '</div>'+
       '</div>'+
@@ -457,13 +523,14 @@ function pageCompose(){
         '</div>':'')+
     '</div>';
   }
+
   return'<div>'+
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px">'+
       '<div><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Compose Stacks</h1>'+
-        '<p style="color:var(--muted);font-size:13px;margin-top:4px">All Vessel-managed docker-compose deployments</p></div>'+
-      '<button class="btn btn-sm" onclick="load()" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
+        '<p style="color:var(--muted);font-size:13px;margin-top:4px">'+totalStacks+' stack'+(totalStacks!==1?'s':'')+' on this host</p></div>'+
+      '<button class="btn btn-sm" onclick="loadComposeStacks()" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
     '</div>'+
-    (managed.length===0?
+    (totalStacks===0?
       '<div style="text-align:center;padding:80px 20px">'+
         '<div style="display:flex;justify-content:center;margin-bottom:16px;color:var(--muted)">'+ico('layers',48)+'</div>'+
         '<div style="font-size:18px;font-weight:600;margin-bottom:8px">No compose stacks yet</div>'+
@@ -480,12 +547,12 @@ function pageCompose(){
             '<div style="flex:1;min-width:0">'+
               '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">'+
                 '<span style="font-weight:600;font-size:15px">'+d.name+'</span>'+badge(d.status)+
-                '<span style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+d.app_id+'</span>'+
+                '<span class="tag tag-imported">vessel</span>'+
               '</div>'+
               '<div style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+d.compose_dir+'</div>'+
               (d.domain?'<div style="font-size:11px;margin-top:3px"><a href="https://'+d.domain+'" target="_blank" style="color:var(--accent2)">'+d.domain+'</a></div>':'')+
             '</div>'+
-            '<div style="display:flex;gap:6px;flex-shrink:0">'+
+            '<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">'+
               '<button class="btn btn-sm" onclick="loadComposeDetail(\''+d.id+'\')" style="display:flex;align-items:center;gap:5px">'+ico('layers',11)+' View Stack</button>'+
               '<button class="btn btn-sm" onclick="openLogs(\''+d.id+'\',\'d\',\''+d.name+'\')" style="display:flex;align-items:center;gap:5px">'+ico('file-text',11)+' Logs</button>'+
               (r?'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'stop\')">Stop</button>':'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'start\')">Start</button>')+
@@ -494,10 +561,27 @@ function pageCompose(){
           '</div>'+
         '</div>';
       }).join('')+
+      externalStacks.map(s=>{
+        const isRunning=(s.status||'').toLowerCase().includes('running');
+        return'<div class="card" style="padding:18px 20px;border-color:var(--border2)">'+
+          '<div style="display:flex;align-items:center;gap:14px">'+
+            imgAvatar('',40)+
+            '<div style="flex:1;min-width:0">'+
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">'+
+                '<span style="font-weight:600;font-size:15px">'+escHtml(s.name)+'</span>'+
+                '<span class="tag '+(isRunning?'tag-running':'tag-stopped')+'"><span class="dot'+(isRunning?' pulse':'')+'"></span>'+escHtml(s.status)+'</span>'+
+                '<span class="tag" style="background:var(--surface3);color:var(--muted)">external</span>'+
+              '</div>'+
+              '<div style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+escHtml(s.config_files||'')+'</div>'+
+            '</div>'+
+            '<div style="font-size:11px;color:var(--muted);flex-shrink:0">Not managed by Vessel</div>'+
+          '</div>'+
+        '</div>';
+      }).join('')+
       '</div>')+
   '</div>';
 }
-// ── Deploy page ───────────────────────────────────────────────────────────────
+
 function pageDeploy(){
   const tabs='<div class="tabs">'+
     '<span class="tab'+(S.deployTab==='templates'?' on':'')+'" onclick="set({deployTab:\'templates\'})">Templates</span>'+
@@ -558,43 +642,27 @@ function deployCustomForm(){
     '<div style="font-weight:600;font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:8px">'+ico('search',14,'var(--accent)')+'Search Docker Hub</div>'+
     '<div style="position:relative">'+
       '<input id="hubsearch" placeholder="Search for any image: nginx, postgres, redis, grafana…" '+
-        'value="'+escHtml(S.hubQuery)+'" oninput="hubSearch(this.value)" '+
+        'value="'+escHtml(S.hubQuery)+'" oninput="hubSearch(this.value)" autocomplete="off" '+
         'style="padding-left:36px">'+
       '<div style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted)">'+ico('search',14)+'</div>'+
-      (S.hubSearching?'<div style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted)">'+ico('loader',14)+'</div>':'')+
     '</div>'+
-    (S.hubResults.length?
-      '<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);margin-top:4px;max-height:300px;overflow-y:auto;box-shadow:0 8px 24px #0008">'+
-        S.hubResults.map(r=>{
-          const logo=r.logo_url&&r.logo_url.large?r.logo_url.large:(r.logo_url&&r.logo_url.small?r.logo_url.small:'');
-          const item=JSON.stringify({slug:r.slug,name:r.name,description:r.short_description||'',logo}).replace(/"/g,'&quot;');
-          return'<div class="hub-result" onclick="selectHub('+item+')">'+
-            (logo?'<img src="'+logo+'" width="36" height="36" style="border-radius:8px;object-fit:contain;background:var(--surface2);flex-shrink:0" onerror="this.replaceWith(document.createRange().createContextualFragment(\''+imgAvatar(r.slug,36).replace(/'/g,"\\'")+'\')); ">':
-              imgAvatar(r.slug,36))+
-            '<div style="flex:1;min-width:0">'+
-              '<div style="font-weight:600;font-size:13px;font-family:var(--mono)">'+escHtml(r.slug)+'</div>'+
-              '<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.short_description||'')+'</div>'+
-            '</div>'+
-            '<div style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">'+
-              (r.pull_count?fmtPulls(r.pull_count)+' pulls':'')+
-              (r.star_count?' · ★'+r.star_count:'')+
-            '</div>'+
-          '</div>';
-        }).join('')+
-      '</div>':'')+'</div>';
-  const selectedBanner=sel?
-    '<div style="display:flex;align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--r);padding:12px 16px;margin-bottom:16px">'+
-      (sel.logo?'<img src="'+sel.logo+'" width="40" height="40" style="border-radius:8px;object-fit:contain;background:var(--surface2);flex-shrink:0">':imgAvatar(sel.slug,40))+
-      '<div style="flex:1;min-width:0">'+
-        '<div style="font-weight:600;font-family:var(--mono);font-size:14px">'+escHtml(sel.slug)+'</div>'+
-        '<div style="font-size:12px;color:var(--muted2)">'+escHtml(sel.description||'')+'</div>'+
-      '</div>'+
-      '<a href="https://hub.docker.com/r/'+escHtml(sel.slug)+'" target="_blank" class="btn btn-xs" style="display:flex;align-items:center;gap:4px">'+ico('external-link',11)+' Hub</a>'+
-      '<button class="btn btn-xs" onclick="set({hubSelected:null,hubQuery:\'\'})">Change</button>'+
-    '</div>':'';
+    '<div id="hub-results" style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);margin-top:4px;max-height:300px;overflow-y:auto;box-shadow:0 8px 24px #0008"></div>'+
+  '</div>';
+  const bannerDisplay=sel?'flex':'none';
+  const bannerContent=sel?
+    (sel.logo?'<img src="'+sel.logo+'" width="40" height="40" style="border-radius:8px;object-fit:contain;background:var(--surface2);flex-shrink:0">':imgAvatar(sel.slug,40))+
+    '<div style="flex:1;min-width:0">'+
+      '<div style="font-weight:600;font-family:var(--mono);font-size:14px">'+escHtml(sel.slug)+'</div>'+
+      '<div style="font-size:12px;color:var(--muted2)">'+escHtml(sel.description||'')+'</div>'+
+    '</div>'+
+    '<a href="https://hub.docker.com/r/'+escHtml(sel.slug)+'" target="_blank" class="btn btn-xs" style="display:flex;align-items:center;gap:4px">'+ico('external-link',11)+' Hub</a>'+
+    '<button class="btn btn-xs" onclick="clearHubSelection()">Change</button>':'';
   return'<form onsubmit="deployCustom(event)">'+
     '<div class="card" style="max-width:800px">'+
-      searchSection+selectedBanner+
+      searchSection+
+      '<div id="hub-selected-banner" style="display:'+bannerDisplay+';align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--r);padding:12px 16px;margin-bottom:16px">'+
+        bannerContent+
+      '</div>'+
       '<div class="fg"><label>Docker Image *</label>'+
         '<input id="cimage" name="cimage" placeholder="nginx:latest  ·  postgres:16  ·  myorg/myapp:1.0" '+(sel?'value="'+escHtml(sel.slug)+'"':'')+' required></div>'+
       '<div class="grid2">'+
