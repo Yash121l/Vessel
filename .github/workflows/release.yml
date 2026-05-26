@@ -31,16 +31,16 @@ jobs:
           LDFLAGS="-s -w -X github.com/Yash121l/Vessel/internal/cli.Version=${VERSION}"
           mkdir -p dist
 
-          GOFLAGS="-mod=mod" GOOS=linux GOARCH=amd64 \
+          CGO_ENABLED=0 GOFLAGS="-mod=mod" GOOS=linux GOARCH=amd64 \
             go build -ldflags="$LDFLAGS" -o dist/vessel_linux_amd64 .
 
-          GOFLAGS="-mod=mod" GOOS=linux GOARCH=arm64 \
+          CGO_ENABLED=0 GOFLAGS="-mod=mod" GOOS=linux GOARCH=arm64 \
             go build -ldflags="$LDFLAGS" -o dist/vessel_linux_arm64 .
 
-          GOFLAGS="-mod=mod" GOOS=linux GOARCH=arm GOARM=7 \
+          CGO_ENABLED=0 GOFLAGS="-mod=mod" GOOS=linux GOARCH=arm GOARM=7 \
             go build -ldflags="$LDFLAGS" -o dist/vessel_linux_armv7 .
 
-          # Make install.sh use the correct version tag
+          # Stamp the correct version into install.sh
           sed -i "s/VESSEL_VERSION:-0.1.0/VESSEL_VERSION:-${VERSION}/" install.sh
 
       - name: Create GitHub Release

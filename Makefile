@@ -8,7 +8,7 @@ BUILD_DIR  := dist
 
 ## build: compile for current platform
 build:
-	GOFLAGS="$(GOFLAGS)" go build $(LDFLAGS) -o $(BINARY) .
+	CGO_ENABLED=0 GOFLAGS="$(GOFLAGS)" go build $(LDFLAGS) -o $(BINARY) .
 
 ## run: build and run the server
 run: build
@@ -20,11 +20,11 @@ bootstrap: build
 
 ## test: run all tests
 test:
-	GOFLAGS="$(GOFLAGS)" go test ./... -v -race -timeout 60s
+	CGO_ENABLED=0 GOFLAGS="$(GOFLAGS)" go test ./... -v -race -timeout 60s
 
 ## vet: run go vet
 vet:
-	GOFLAGS="$(GOFLAGS)" go vet ./...
+	CGO_ENABLED=0 GOFLAGS="$(GOFLAGS)" go vet ./...
 
 ## lint: run golangci-lint
 lint:
@@ -41,14 +41,14 @@ clean:
 ## release: cross-compile for Linux amd64, arm64, armv7
 release:
 	mkdir -p $(BUILD_DIR)
-	GOFLAGS="$(GOFLAGS)" GOOS=linux GOARCH=amd64       go build $(LDFLAGS) -o $(BUILD_DIR)/vessel_linux_amd64 .
-	GOFLAGS="$(GOFLAGS)" GOOS=linux GOARCH=arm64       go build $(LDFLAGS) -o $(BUILD_DIR)/vessel_linux_arm64 .
-	GOFLAGS="$(GOFLAGS)" GOOS=linux GOARCH=arm GOARM=7 go build $(LDFLAGS) -o $(BUILD_DIR)/vessel_linux_armv7 .
+	CGO_ENABLED=0 GOFLAGS="$(GOFLAGS)" GOOS=linux GOARCH=amd64       go build $(LDFLAGS) -o $(BUILD_DIR)/vessel_linux_amd64 .
+	CGO_ENABLED=0 GOFLAGS="$(GOFLAGS)" GOOS=linux GOARCH=arm64       go build $(LDFLAGS) -o $(BUILD_DIR)/vessel_linux_arm64 .
+	CGO_ENABLED=0 GOFLAGS="$(GOFLAGS)" GOOS=linux GOARCH=arm GOARM=7 go build $(LDFLAGS) -o $(BUILD_DIR)/vessel_linux_armv7 .
 	@echo "Binaries written to $(BUILD_DIR)/"
 
 ## dev: run with hot reload (requires air: go install github.com/air-verse/air@latest)
 dev:
-	GOFLAGS="$(GOFLAGS)" air
+	CGO_ENABLED=0 GOFLAGS="$(GOFLAGS)" air
 
 ## help: show available targets
 help:
