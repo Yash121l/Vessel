@@ -94,8 +94,16 @@ async function loadNginxLogs(t){try{const d=await api('GET','/nginx/logs/'+t);se
 `
 <script>
 // Actions
-async function act(id,a){try{await api('POST','/deployments/'+id+'/'+a);await load()}catch(e){set({error:e.message})}}
-async function actC(id,a){try{await api('POST','/docker/containers/'+id+'/'+a);await load()}catch(e){set({error:e.message})}}
+async function act(id,a){
+  if(a==='stop'&&!confirm('Stop this deployment? The app will go offline.'))return;
+  if(a==='restart'&&!confirm('Restart this deployment?'))return;
+  try{await api('POST','/deployments/'+id+'/'+a);await load()}catch(e){set({error:e.message})}
+}
+async function actC(id,a,name){
+  if(a==='stop'&&!confirm('Stop "'+name+'"?\n\nThe container will go offline.'))return;
+  if(a==='restart'&&!confirm('Restart "'+name+'"?'))return;
+  try{await api('POST','/docker/containers/'+id+'/'+a);await load()}catch(e){set({error:e.message})}
+}
 async function monitor(id,name){try{await api('POST','/docker/import',{container_id:id,name});await load()}catch(e){set({error:e.message})}}
 async function remove(id,name){
   if(!confirm('Remove "'+name+'"? Containers and volumes will be deleted.'))return;
@@ -265,8 +273,8 @@ function cardImported(d){
       '<span style="font-weight:600;font-size:14px">'+d.name+'</span>'+badge(d.status)+'<span class="tag tag-imported">monitored</span></div>'+
       '<div style="color:var(--muted);font-size:11px;margin-top:2px">'+(d.image||d.app_id)+(ports.length?' · '+ports.slice(0,2).join(', '):'')+'</div></div>'+
     '<div style="display:flex;gap:5px;flex-shrink:0">'+
-      (r?'<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'stop\')">Stop</button>':'<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'start\')">Start</button>')+
-      '<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'restart\')">Restart</button>'+
+      (r?'<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'stop\',\''+d.name+'\')">Stop</button>':'<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'start\',\''+d.name+'\')">Start</button>')+
+      '<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'restart\',\''+d.name+'\')">Restart</button>'+
       '<button class="btn btn-sm" onclick="openLogs(\''+d.container_id+'\',\'c\',\''+d.name+'\')">Logs</button>'+
     '</div></div></div>';
 }

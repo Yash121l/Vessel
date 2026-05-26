@@ -427,9 +427,14 @@ func streamContainerLogs() gin.HandlerFunc {
 
 func stopContainer() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		id := c.Param("id")
+		if isVesselContainer(id) {
+			c.JSON(400, gin.H{"error": "cannot stop the Vessel container itself"})
+			return
+		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
-		if err := docker.StopContainer(ctx, c.Param("id")); err != nil {
+		if err := docker.StopContainer(ctx, id); err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
@@ -451,14 +456,25 @@ func startContainer() gin.HandlerFunc {
 
 func restartContainer() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		id := c.Param("id")
+		if isVesselContainer(id) {
+			c.JSON(400, gin.H{"error": "cannot restart the Vessel container itself"})
+			return
+		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
-		if err := docker.RestartContainer(ctx, c.Param("id")); err != nil {
+		if err := docker.RestartContainer(ctx, id); err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(200, gin.H{"status": "restarted"})
 	}
+}
+
+// isVesselContainer returns true if the given container ID/name belongs to Vessel itself.
+func isVesselContainer(nameOrID string) bool {
+	lower := strings.ToLower(nameOrID)
+	return strings.Contains(lower, "vessel")
 }
 
 // guessAppID maps a container image/name to a known Vessel app template ID.

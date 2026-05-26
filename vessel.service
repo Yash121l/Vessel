@@ -8,18 +8,13 @@ Requires=docker.service
 Type=simple
 User=root
 ExecStart=/usr/local/bin/vessel serve
-Restart=on-failure
-RestartSec=5s
+Restart=always
+RestartSec=3s
+StartLimitIntervalSec=0
 Environment=VESSEL_CONFIG=/etc/vessel/config.yaml
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=vessel
-
-# Security hardening
-NoNewPrivileges=yes
-ProtectSystem=strict
-ReadWritePaths=/var/lib/vessel /etc/vessel /etc/caddy /var/log/caddy
-PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target
