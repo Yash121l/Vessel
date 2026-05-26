@@ -51,15 +51,22 @@ func (b *Bootstrapper) CheckDependencies() error {
 // InstallDocker installs Docker if not already present.
 func (b *Bootstrapper) InstallDocker() error {
 	if _, err := exec.LookPath("docker"); err == nil {
-		return nil // already installed
+		// Make sure the daemon is running
+		_ = runCmd("systemctl", "enable", "--now", "docker")
+		return nil
 	}
 
 	switch b.distro {
-	case "ubuntu", "debian":
-		return b.runScript("https://get.docker.com")
-	case "centos", "rhel", "fedora", "rocky", "almalinux":
-		return b.runScript("https://get.docker.com")
+	case "amzn": // Amazon Linux 2 / 2023
+		if err := runCmd("dnf", "install", "-y", "docker"); err != nil {
+			// fallback for Amazon Linux 2
+			if err2 := runCmd("yum", "install", "-y", "docker"); err2 != nil {
+				return fmt.Errorf("install docker: %w", err)
+			}
+		}
+		return runCmd("systemctl", "enable", "--now", "docker")
 	default:
+		// Universal installer works on Ubuntu, Debian, CentOS, RHEL, Fedora
 		return b.runScript("https://get.docker.com")
 	}
 }
@@ -71,14 +78,14 @@ func (b *Bootstrapper) InstallDockerCompose() error {
 		return nil
 	}
 
-	// Install compose plugin
 	switch b.distro {
+	case "amzn": // Amazon Linux — compose plugin not in default repos, install binary
+		return b.installComposeManually()
 	case "ubuntu", "debian":
 		return runCmd("apt-get", "install", "-y", "docker-compose-plugin")
 	case "centos", "rhel", "fedora", "rocky", "almalinux":
 		return runCmd("yum", "install", "-y", "docker-compose-plugin")
 	default:
-		// Fallback: install binary directly
 		return b.installComposeManually()
 	}
 }
@@ -86,12 +93,18 @@ func (b *Bootstrapper) InstallDockerCompose() error {
 // InstallCaddy installs Caddy web server if missing.
 func (b *Bootstrapper) InstallCaddy() error {
 	if _, err := exec.LookPath("caddy"); err == nil {
-		// Ensure it's running as a service
 		_ = runCmd("systemctl", "enable", "--now", "caddy")
 		return nil
 	}
 
 	switch b.distro {
+	case "amzn": // Amazon Linux
+		// No official Caddy repo for Amazon Linux — install binary directly
+		if err := b.installCaddyBinary(); err != nil {
+			return err
+		}
+		// Write a systemd unit for it
+		return b.writeCaddyService()
 	case "ubuntu", "debian":
 		if err := runCmd("apt-get", "install", "-y", "debian-keyring", "debian-archive-keyring", "apt-transport-https"); err != nil {
 			return err
@@ -125,7 +138,10 @@ func (b *Bootstrapper) InstallCaddy() error {
 			return err
 		}
 	default:
-		return fmt.Errorf("unsupported distribution for Caddy installation: %s", b.distro)
+		if err := b.installCaddyBinary(); err != nil {
+			return err
+		}
+		return b.writeCaddyService()
 	}
 
 	return runCmd("systemctl", "enable", "--now", "caddy")
@@ -135,16 +151,7 @@ func (b *Bootstrapper) InstallCaddy() error {
 func (b *Bootstrapper) ConfigureFirewall() error {
 	ports := []string{"80/tcp", "443/tcp", fmt.Sprintf("%d/tcp", b.cfg.Port)}
 
-	// Try ufw first (Ubuntu/Debian)
-	if _, err := exec.LookPath("ufw"); err == nil {
-		for _, port := range ports {
-			_ = runCmd("ufw", "allow", port)
-		}
-		_ = runCmd("ufw", "--force", "enable")
-		return nil
-	}
-
-	// Try firewall-cmd (RHEL/CentOS)
+	// Amazon Linux 2023 uses firewalld by default
 	if _, err := exec.LookPath("firewall-cmd"); err == nil {
 		for _, port := range ports {
 			_ = runCmd("firewall-cmd", "--permanent", "--add-port="+port)
@@ -153,7 +160,16 @@ func (b *Bootstrapper) ConfigureFirewall() error {
 		return nil
 	}
 
-	// No firewall manager found — not an error, just skip
+	// Try ufw (Ubuntu/Debian)
+	if _, err := exec.LookPath("ufw"); err == nil {
+		for _, port := range ports {
+			_ = runCmd("ufw", "allow", port)
+		}
+		_ = runCmd("ufw", "--force", "enable")
+		return nil
+	}
+
+	// No firewall manager found — not an error, EC2 security groups handle it
 	return nil
 }
 
@@ -194,14 +210,64 @@ func (b *Bootstrapper) runScript(url string) error {
 
 func (b *Bootstrapper) installComposeManually() error {
 	script := `
-COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-curl -SL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
+ARCH=$(uname -m)
+case $ARCH in x86_64) ARCH="x86_64" ;; aarch64) ARCH="aarch64" ;; *) ARCH="x86_64" ;; esac
+COMPOSE_VERSION=$(curl -fsSL https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${ARCH}" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 `
 	cmd := exec.Command("sh", "-c", script)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func (b *Bootstrapper) installCaddyBinary() error {
+	script := `
+ARCH=$(uname -m)
+case $ARCH in x86_64) ARCH="amd64" ;; aarch64) ARCH="arm64" ;; armv7l) ARCH="armv7" ;; *) ARCH="amd64" ;; esac
+CADDY_VERSION=$(curl -fsSL https://api.github.com/repos/caddyserver/caddy/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+curl -fsSL "https://github.com/caddyserver/caddy/releases/download/${CADDY_VERSION}/caddy_${CADDY_VERSION#v}_linux_${ARCH}.tar.gz" \
+  | tar -xz -C /usr/local/bin caddy
+chmod +x /usr/local/bin/caddy
+mkdir -p /etc/caddy /var/log/caddy
+`
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func (b *Bootstrapper) writeCaddyService() error {
+	unit := `[Unit]
+Description=Caddy
+Documentation=https://caddyserver.com/docs/
+After=network.target network-online.target
+Requires=network-online.target
+
+[Service]
+Type=notify
+User=root
+ExecStart=/usr/local/bin/caddy run --environ --config /etc/caddy/Caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --force
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+PrivateTmp=true
+ProtectSystem=full
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
+`
+	if err := os.WriteFile("/etc/systemd/system/caddy.service", []byte(unit), 0644); err != nil {
+		return err
+	}
+	if err := runCmd("systemctl", "daemon-reload"); err != nil {
+		return err
+	}
+	return runCmd("systemctl", "enable", "--now", "caddy")
 }
 
 func runCmd(name string, args ...string) error {
