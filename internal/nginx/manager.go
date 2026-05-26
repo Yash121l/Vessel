@@ -183,8 +183,26 @@ func (m *Manager) CreateSite(name, serverName string, port int, upstream string)
 	return m.SaveSite(name, content)
 }
 
-// EnableSite creates a symlink in sites-enabled.
+// EnableSite enables a site config.
+// For sites-available files: creates a symlink in sites-enabled.
+// For conf.d files: renames .disabled → .conf.
 func (m *Manager) EnableSite(name string) error {
+	// Check if it's a conf.d file
+	confDPath := filepath.Join(m.configRoot, "conf.d", name)
+	if _, err := os.Stat(confDPath); err == nil {
+		return nil // already enabled (.conf file exists)
+	}
+	// Check for disabled version
+	disabledPath := filepath.Join(m.configRoot, "conf.d", strings.TrimSuffix(name, ".conf")+".disabled")
+	if _, err := os.Stat(disabledPath); err == nil {
+		newName := strings.TrimSuffix(name, ".disabled") + ".conf"
+		if !strings.HasSuffix(newName, ".conf") {
+			newName = name + ".conf"
+		}
+		return os.Rename(disabledPath, filepath.Join(m.configRoot, "conf.d", newName))
+	}
+
+	// sites-available symlink approach
 	available := filepath.Join(m.configRoot, "sites-available", name)
 	enabled := filepath.Join(m.configRoot, "sites-enabled", name)
 	if err := os.MkdirAll(filepath.Dir(enabled), 0755); err != nil {
@@ -194,14 +212,39 @@ func (m *Manager) EnableSite(name string) error {
 	return os.Symlink(available, enabled)
 }
 
-// DisableSite removes the symlink from sites-enabled.
+// DisableSite disables a site config.
+// For sites-available files: removes the symlink from sites-enabled.
+// For conf.d files: renames .conf → .disabled.
 func (m *Manager) DisableSite(name string) error {
+	// Check if it's a conf.d file
+	confDPath := filepath.Join(m.configRoot, "conf.d", name)
+	if _, err := os.Stat(confDPath); err == nil {
+		disabledName := strings.TrimSuffix(name, ".conf") + ".disabled"
+		return os.Rename(confDPath, filepath.Join(m.configRoot, "conf.d", disabledName))
+	}
+
+	// sites-enabled symlink approach
 	enabled := filepath.Join(m.configRoot, "sites-enabled", name)
-	return os.Remove(enabled)
+	err := os.Remove(enabled)
+	if os.IsNotExist(err) {
+		return nil // already disabled
+	}
+	return err
 }
 
-// DeleteSite removes a site config file (and its symlink).
+// DeleteSite removes a site config file (and its symlink if applicable).
 func (m *Manager) DeleteSite(name string) error {
+	// Try conf.d first
+	confDPath := filepath.Join(m.configRoot, "conf.d", name)
+	if _, err := os.Stat(confDPath); err == nil {
+		return os.Remove(confDPath)
+	}
+	// Try disabled conf.d
+	disabledPath := filepath.Join(m.configRoot, "conf.d", strings.TrimSuffix(name, ".conf")+".disabled")
+	if _, err := os.Stat(disabledPath); err == nil {
+		return os.Remove(disabledPath)
+	}
+	// sites-available
 	_ = m.DisableSite(name)
 	path := filepath.Join(m.configRoot, "sites-available", name)
 	return os.Remove(path)

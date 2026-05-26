@@ -306,7 +306,7 @@ function cardImported(d){
     '<div style="display:flex;gap:5px;flex-shrink:0">'+
       (r?'<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'stop\',\''+d.name+'\')">Stop</button>':'<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'start\',\''+d.name+'\')">Start</button>')+
       '<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'restart\',\''+d.name+'\')">Restart</button>'+
-      '<button class="btn btn-sm" onclick="openLogs(\''+d.container_id+'\',\'c\',\''+d.name+'\')">Logs</button>'+
+      '<button class="btn btn-sm" onclick="openLogs(\''+d.name+'\',\'c\',\''+d.name+'\')">Logs</button>'+
     '</div></div></div>';
 }
 

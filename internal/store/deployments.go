@@ -136,6 +136,12 @@ func (db *DB) UpdateDeploymentDomain(id, domain string) error {
 	return err
 }
 
+// UpdateContainerID updates the container_id for an imported deployment.
+func (db *DB) UpdateContainerID(id, containerID string) error {
+	_, err := db.Exec(`UPDATE deployments SET container_id = ? WHERE id = ?`, containerID, id)
+	return err
+}
+
 // DeleteDeployment removes a deployment and its env vars.
 func (db *DB) DeleteDeployment(id string) error {
 	_, err := db.Exec(`DELETE FROM deployments WHERE id = ?`, id)

@@ -68,9 +68,12 @@ func ListContainers(ctx context.Context) ([]Container, error) {
 	return containers, nil
 }
 
-// ContainerLogs streams logs from a container by name or ID.
+// ContainerLogs streams logs from a container — tries name first, then ID.
 func ContainerLogs(ctx context.Context, nameOrID string, lines chan<- string) error {
-	cmd := exec.CommandContext(ctx, "docker", "logs", "--follow", "--timestamps", "--tail", "100", nameOrID)
+	// Resolve to current container name/ID (handles restarts that change the ID)
+	resolved := resolveContainer(ctx, nameOrID)
+
+	cmd := exec.CommandContext(ctx, "docker", "logs", "--follow", "--timestamps", "--tail", "100", resolved)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -130,17 +133,39 @@ func ContainerLogs(ctx context.Context, nameOrID string, lines chan<- string) er
 
 // StopContainer stops a container by name or ID.
 func StopContainer(ctx context.Context, nameOrID string) error {
-	return exec.CommandContext(ctx, "docker", "stop", nameOrID).Run()
+	return exec.CommandContext(ctx, "docker", "stop", resolveContainer(ctx, nameOrID)).Run()
 }
 
 // StartContainer starts a stopped container by name or ID.
 func StartContainer(ctx context.Context, nameOrID string) error {
-	return exec.CommandContext(ctx, "docker", "start", nameOrID).Run()
+	return exec.CommandContext(ctx, "docker", "start", resolveContainer(ctx, nameOrID)).Run()
 }
 
 // RestartContainer restarts a container by name or ID.
 func RestartContainer(ctx context.Context, nameOrID string) error {
-	return exec.CommandContext(ctx, "docker", "restart", nameOrID).Run()
+	return exec.CommandContext(ctx, "docker", "restart", resolveContainer(ctx, nameOrID)).Run()
+}
+
+// resolveContainer tries to find the best identifier for a container.
+// If nameOrID looks like a short/full container ID that no longer exists,
+// it falls back to matching by name across running containers.
+func resolveContainer(ctx context.Context, nameOrID string) string {
+	// First try the given value directly — if docker can find it, use it
+	out, err := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.Name}}", nameOrID).Output()
+	if err == nil && len(out) > 0 {
+		return nameOrID
+	}
+	// Fallback: search all containers by name
+	containers, err := ListContainers(ctx)
+	if err != nil {
+		return nameOrID
+	}
+	for _, c := range containers {
+		if c.Name == nameOrID || strings.HasPrefix(c.ID, nameOrID) {
+			return c.Name
+		}
+	}
+	return nameOrID
 }
 
 // --- helpers ---

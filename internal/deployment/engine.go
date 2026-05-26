@@ -314,6 +314,45 @@ func (e *Engine) StreamLogs(ctx context.Context, id string, lines chan<- string)
 	}
 }
 
+// SyncImportedStatus refreshes the container_id for imported deployments by looking up by name.
+func (e *Engine) SyncImportedStatus(ctx context.Context) error {
+	deployments, err := e.db.ListDeployments()
+	if err != nil {
+		return err
+	}
+	containers, err := docker.ListContainers(ctx)
+	if err != nil {
+		return nil // docker not available, skip
+	}
+
+	// Build name→container map
+	byName := make(map[string]docker.Container)
+	for _, c := range containers {
+		byName[c.Name] = c
+	}
+
+	for _, d := range deployments {
+		if !d.Imported {
+			continue
+		}
+		c, ok := byName[d.Name]
+		if !ok {
+			// Container not found by name — mark stopped
+			_ = e.db.UpdateDeploymentStatus(d.ID, "stopped")
+			continue
+		}
+		// Update container_id in case it changed (restart)
+		if c.ID != d.ContainerID {
+			_ = e.db.UpdateContainerID(d.ID, c.ID)
+		}
+		status := "stopped"
+		if c.State == "running" {
+			status = "running"
+		}
+		_ = e.db.UpdateDeploymentStatus(d.ID, status)
+	}
+	return nil
+}
 // PeriodicSync refreshes all deployment statuses every interval.
 func (e *Engine) PeriodicSync(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
@@ -323,12 +362,15 @@ func (e *Engine) PeriodicSync(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			_ = e.SyncImportedStatus(ctx)
 			deployments, err := e.db.ListDeployments()
 			if err != nil {
 				continue
 			}
 			for _, d := range deployments {
-				_ = e.SyncStatus(ctx, d.ID)
+				if !d.Imported {
+					_ = e.SyncStatus(ctx, d.ID)
+				}
 			}
 		}
 	}
