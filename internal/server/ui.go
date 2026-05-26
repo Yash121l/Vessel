@@ -214,7 +214,6 @@ function statusColor(code){
 }
 function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 </script>
-`
 <script>
 // ── Layout ────────────────────────────────────────────────────────────────────
 function render(){
@@ -387,7 +386,6 @@ function cardDiscovered(c){
   '</div>';
 }
 </script>
-`
 <script>
 // ── Nginx page ────────────────────────────────────────────────────────────────
 function pageNginx(){
@@ -625,7 +623,6 @@ function nginxLogsTab(){
       '</pre></div></div>';
 }
 </script>
-`
 <script>
 // ── Deploy page ───────────────────────────────────────────────────────────────
 function pageDeploy(){
