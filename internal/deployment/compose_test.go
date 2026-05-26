@@ -20,7 +20,7 @@ func TestGenerateComposeBindsDomainPortsToLocalhost(t *testing.T) {
 	}
 	deployment := &store.Deployment{Name: "demo-app", Domain: "demo.example.com"}
 
-	cf, err := GenerateCompose(tmpl, deployment)
+	cf, err := GenerateCompose(tmpl, deployment, nil)
 	if err != nil {
 		t.Fatalf("GenerateCompose() error = %v", err)
 	}
@@ -42,7 +42,7 @@ func TestGenerateComposePublishesPortsWithoutDomain(t *testing.T) {
 	}
 	deployment := &store.Deployment{Name: "demo-app"}
 
-	cf, err := GenerateCompose(tmpl, deployment)
+	cf, err := GenerateCompose(tmpl, deployment, nil)
 	if err != nil {
 		t.Fatalf("GenerateCompose() error = %v", err)
 	}
