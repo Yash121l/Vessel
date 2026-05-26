@@ -44,6 +44,11 @@ type DeployRequest struct {
 	Env    map[string]string
 }
 
+// RegisterTemp adds a synthetic template to the registry for one-off custom deployments.
+func (e *Engine) RegisterTemp(tmpl *registry.AppTemplate) {
+	e.registry.Register(tmpl)
+}
+
 // Deploy creates and starts a new deployment.
 func (e *Engine) Deploy(ctx context.Context, req DeployRequest) (*store.Deployment, error) {
 	tmpl, ok := e.registry.Get(req.AppID)

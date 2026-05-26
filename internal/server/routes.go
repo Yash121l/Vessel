@@ -45,6 +45,8 @@ func registerRoutes(
 	// Docker discovery
 	r.GET("/docker/containers", listDockerContainers())
 	r.POST("/docker/import", importContainer(db))
+	r.POST("/docker/deploy", deployCustomContainer(engine))
+	r.GET("/docker/search", dockerHubSearch())
 	r.GET("/docker/containers/:id/logs", streamContainerLogs())
 	r.POST("/docker/containers/:id/stop", stopContainer())
 	r.POST("/docker/containers/:id/start", startContainer())
@@ -469,6 +471,100 @@ func restartContainer() gin.HandlerFunc {
 			return
 		}
 		c.JSON(200, gin.H{"status": "restarted"})
+	}
+}
+
+// deployCustomContainer deploys an arbitrary Docker image as a Vessel-managed deployment.
+func deployCustomContainer(engine *deployment.Engine) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Image  string            `json:"image"  binding:"required"`
+			Name   string            `json:"name"   binding:"required"`
+			Domain string            `json:"domain"`
+			Ports  []struct {
+				Internal int    `json:"internal"`
+				External int    `json:"external"`
+				Protocol string `json:"protocol"`
+			} `json:"ports"`
+			Volumes []struct {
+				Name      string `json:"name"`
+				MountPath string `json:"mount_path"`
+			} `json:"volumes"`
+			Env map[string]string `json:"env"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Build a synthetic AppTemplate from the request
+		tmpl := &registry.AppTemplate{
+			ID:    req.Name,
+			Name:  req.Name,
+			Image: req.Image,
+		}
+		for _, p := range req.Ports {
+			proto := p.Protocol
+			if proto == "" {
+				proto = "tcp"
+			}
+			tmpl.Ports = append(tmpl.Ports, registry.Port{
+				Internal: p.Internal,
+				External: p.External,
+				Protocol: proto,
+			})
+			if tmpl.ProxyPort == 0 {
+				tmpl.ProxyPort = p.Internal
+			}
+		}
+		for _, v := range req.Volumes {
+			tmpl.Volumes = append(tmpl.Volumes, registry.Volume{
+				Name:      v.Name,
+				MountPath: v.MountPath,
+			})
+		}
+
+		// Register the synthetic template temporarily
+		engine.RegisterTemp(tmpl)
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
+		defer cancel()
+
+		d, err := engine.Deploy(ctx, deployment.DeployRequest{
+			AppID:  req.Name,
+			Name:   req.Name,
+			Domain: req.Domain,
+			Env:    req.Env,
+		})
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(201, d)
+	}
+}
+
+// dockerHubSearch proxies a Docker Hub search query.
+func dockerHubSearch() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		q := c.Query("q")
+		if q == "" {
+			c.JSON(400, gin.H{"error": "q is required"})
+			return
+		}
+		url := "https://hub.docker.com/v2/search/repositories/?query=" + q + "&page_size=10"
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Second)
+		defer cancel()
+		httpReq, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+		httpReq.Header.Set("Accept", "application/json")
+		resp, err := http.DefaultClient.Do(httpReq)
+		if err != nil {
+			c.JSON(502, gin.H{"error": "docker hub unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
 	}
 }
 

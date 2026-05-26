@@ -105,6 +105,11 @@ func (r *Registry) LoadFromDir(dir string) error {
 	return nil
 }
 
+// Register adds or replaces a template in the registry.
+func (r *Registry) Register(t *AppTemplate) {
+	r.templates[t.ID] = t
+}
+
 // Get returns a template by ID.
 func (r *Registry) Get(id string) (*AppTemplate, bool) {
 	t, ok := r.templates[id]
