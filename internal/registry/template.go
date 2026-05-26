@@ -10,61 +10,59 @@ import (
 
 // EnvVar defines a required or optional environment variable for an app.
 type EnvVar struct {
-	Key         string `yaml:"key"`
-	Description string `yaml:"description"`
-	Default     string `yaml:"default"`
-	Required    bool   `yaml:"required"`
-	Secret      bool   `yaml:"secret"`
+	Key         string `yaml:"key"         json:"key"`
+	Description string `yaml:"description" json:"description"`
+	Default     string `yaml:"default"     json:"default"`
+	Required    bool   `yaml:"required"    json:"required"`
+	Secret      bool   `yaml:"secret"      json:"secret"`
 }
 
 // Port defines a port mapping for an app.
 type Port struct {
-	Internal int    `yaml:"internal"`
-	External int    `yaml:"external"`
-	Protocol string `yaml:"protocol"` // tcp, udp
+	Internal int    `yaml:"internal" json:"internal"`
+	External int    `yaml:"external" json:"external"`
+	Protocol string `yaml:"protocol" json:"protocol"`
 }
 
 // Volume defines a persistent volume for an app.
 type Volume struct {
-	Name        string `yaml:"name"`
-	MountPath   string `yaml:"mount_path"`
-	Description string `yaml:"description"`
+	Name        string `yaml:"name"        json:"name"`
+	MountPath   string `yaml:"mount_path"  json:"mount_path"`
+	Description string `yaml:"description" json:"description"`
 }
 
 // HealthCheck defines a Docker health check.
 type HealthCheck struct {
-	Test     []string `yaml:"test"`
-	Interval string   `yaml:"interval"`
-	Timeout  string   `yaml:"timeout"`
-	Retries  int      `yaml:"retries"`
+	Test     []string `yaml:"test"     json:"test"`
+	Interval string   `yaml:"interval" json:"interval"`
+	Timeout  string   `yaml:"timeout"  json:"timeout"`
+	Retries  int      `yaml:"retries"  json:"retries"`
 }
 
 // AppTemplate is the full definition of a deployable application.
 type AppTemplate struct {
-	ID          string      `yaml:"id"`
-	Name        string      `yaml:"name"`
-	Description string      `yaml:"description"`
-	Category    string      `yaml:"category"`
-	Icon        string      `yaml:"icon"`
-	Version     string      `yaml:"version"`
-	Image       string      `yaml:"image"`
-	Ports       []Port      `yaml:"ports"`
-	Volumes     []Volume    `yaml:"volumes"`
-	EnvVars     []EnvVar    `yaml:"env_vars"`
-	HealthCheck HealthCheck `yaml:"health_check"`
-	// ProxyPort is the internal port Caddy should forward to.
-	ProxyPort int `yaml:"proxy_port"`
-	// ExtraServices are sidecar services (e.g. databases) defined inline.
-	ExtraServices []ServiceDef `yaml:"extra_services"`
+	ID            string       `yaml:"id"             json:"id"`
+	Name          string       `yaml:"name"           json:"name"`
+	Description   string       `yaml:"description"    json:"description"`
+	Category      string       `yaml:"category"       json:"category"`
+	Icon          string       `yaml:"icon"           json:"icon"`
+	Version       string       `yaml:"version"        json:"version"`
+	Image         string       `yaml:"image"          json:"image"`
+	Ports         []Port       `yaml:"ports"          json:"ports"`
+	Volumes       []Volume     `yaml:"volumes"        json:"volumes"`
+	EnvVars       []EnvVar     `yaml:"env_vars"       json:"env_vars"`
+	HealthCheck   HealthCheck  `yaml:"health_check"   json:"health_check"`
+	ProxyPort     int          `yaml:"proxy_port"     json:"proxy_port"`
+	ExtraServices []ServiceDef `yaml:"extra_services" json:"extra_services"`
 }
 
 // ServiceDef defines a sidecar service (e.g. postgres, redis).
 type ServiceDef struct {
-	Name        string            `yaml:"name"`
-	Image       string            `yaml:"image"`
-	Environment map[string]string `yaml:"environment"`
-	Volumes     []Volume          `yaml:"volumes"`
-	HealthCheck HealthCheck       `yaml:"health_check"`
+	Name        string            `yaml:"name"         json:"name"`
+	Image       string            `yaml:"image"        json:"image"`
+	Environment map[string]string `yaml:"environment"  json:"environment"`
+	Volumes     []Volume          `yaml:"volumes"      json:"volumes"`
+	HealthCheck HealthCheck       `yaml:"health_check" json:"health_check"`
 }
 
 // Registry holds all available app templates.

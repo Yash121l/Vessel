@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/Yash121l/Vessel/internal/deployment"
 	"github.com/Yash121l/Vessel/internal/docker"
+	"github.com/Yash121l/Vessel/internal/nginx"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
 )
@@ -52,6 +53,26 @@ func registerRoutes(
 	// Settings
 	r.GET("/settings", getSettings(db))
 	r.PUT("/settings", updateSettings(db))
+
+	// Nginx management
+	ngx := nginx.NewManager()
+	r.GET("/nginx/status", nginxStatus(ngx))
+	r.POST("/nginx/reload", nginxReload(ngx))
+	r.POST("/nginx/restart", nginxRestart(ngx))
+	r.POST("/nginx/stop", nginxStop(ngx))
+	r.POST("/nginx/start", nginxStart(ngx))
+	r.GET("/nginx/test", nginxTest(ngx))
+	r.GET("/nginx/config", nginxGetMainConfig(ngx))
+	r.PUT("/nginx/config", nginxSaveMainConfig(ngx))
+	r.GET("/nginx/sites", nginxListSites(ngx))
+	r.GET("/nginx/sites/:name", nginxGetSite(ngx))
+	r.PUT("/nginx/sites/:name", nginxSaveSite(ngx))
+	r.POST("/nginx/sites", nginxCreateSite(ngx))
+	r.POST("/nginx/sites/:name/enable", nginxEnableSite(ngx))
+	r.POST("/nginx/sites/:name/disable", nginxDisableSite(ngx))
+	r.DELETE("/nginx/sites/:name", nginxDeleteSite(ngx))
+	r.GET("/nginx/logs/:type", nginxGetLogs(ngx))
+	r.GET("/nginx/logs/:type/stream", nginxStreamLogs(ngx))
 
 	// Health
 	r.GET("/health", func(c *gin.Context) {
@@ -468,5 +489,231 @@ func guessAppID(image, name string) string {
 		return "nginx"
 	default:
 		return "custom"
+	}
+}
+
+// --- Nginx handlers ---
+
+func nginxStatus(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(200, ngx.GetStatus())
+	}
+}
+
+func nginxReload(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if out, ok := ngx.TestConfig(); !ok {
+			c.JSON(400, gin.H{"error": "config test failed", "output": out})
+			return
+		}
+		if err := ngx.Reload(); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "reloaded"})
+	}
+}
+
+func nginxRestart(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := ngx.Restart(); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "restarted"})
+	}
+}
+
+func nginxStop(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := ngx.Stop(); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "stopped"})
+	}
+}
+
+func nginxStart(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := ngx.Start(); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "started"})
+	}
+}
+
+func nginxTest(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		out, ok := ngx.TestConfig()
+		c.JSON(200, gin.H{"ok": ok, "output": out})
+	}
+}
+
+func nginxGetMainConfig(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		content, err := ngx.GetMainConfig()
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"content": content})
+	}
+}
+
+func nginxSaveMainConfig(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Content string `json:"content" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := ngx.SaveMainConfig(req.Content); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "saved"})
+	}
+}
+
+func nginxListSites(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sites, err := ngx.ListSites()
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		if sites == nil {
+			sites = []nginx.SiteFile{}
+		}
+		c.JSON(200, gin.H{"sites": sites})
+	}
+}
+
+func nginxGetSite(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		site, err := ngx.GetSite(c.Param("name"))
+		if err != nil {
+			c.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, site)
+	}
+}
+
+func nginxSaveSite(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Content string `json:"content" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := ngx.SaveSite(c.Param("name"), req.Content); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "saved"})
+	}
+}
+
+func nginxCreateSite(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Name       string `json:"name"        binding:"required"`
+			ServerName string `json:"server_name" binding:"required"`
+			Port       int    `json:"port"`
+			Upstream   string `json:"upstream"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if req.Port == 0 {
+			req.Port = 80
+		}
+		if err := ngx.CreateSite(req.Name, req.ServerName, req.Port, req.Upstream); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(201, gin.H{"status": "created", "name": req.Name})
+	}
+}
+
+func nginxEnableSite(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := ngx.EnableSite(c.Param("name")); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "enabled"})
+	}
+}
+
+func nginxDisableSite(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := ngx.DisableSite(c.Param("name")); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "disabled"})
+	}
+}
+
+func nginxDeleteSite(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := ngx.DeleteSite(c.Param("name")); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "deleted"})
+	}
+}
+
+func nginxGetLogs(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		n := 200
+		lines, err := ngx.TailLog(c.Param("type"), n)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"lines": lines})
+	}
+}
+
+func nginxStreamLogs(ngx *nginx.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		logType := c.Param("type")
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+
+		ctx, cancel := context.WithCancel(c.Request.Context())
+		defer cancel()
+
+		lines := make(chan string, 100)
+		go func() {
+			defer close(lines)
+			_ = ngx.StreamLog(ctx, logType, lines)
+		}()
+
+		c.Stream(func(w io.Writer) bool {
+			select {
+			case line, ok := <-lines:
+				if !ok {
+					return false
+				}
+				fmt.Fprintf(w, "data: %s\n\n", line)
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		})
 	}
 }

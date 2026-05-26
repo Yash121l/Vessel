@@ -19,43 +19,50 @@ const uiHTML = `<!DOCTYPE html>
   --blue:#3b82f6;--blue-bg:#3b82f615;
   --r:8px;--r2:12px;
   --font:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  --mono:'SF Mono','Fira Code',monospace;
+  --mono:'SF Mono','Fira Code','Cascadia Code',monospace;
 }
 body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6;min-height:100vh}
-a{color:var(--accent);text-decoration:none}
-a:hover{color:var(--accent2)}
+a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent2)}
 button{cursor:pointer;font-family:var(--font);font-size:13px;border:none;border-radius:var(--r);padding:7px 14px;transition:all .15s;font-weight:500}
-.btn{background:var(--surface2);color:var(--muted2);border:1px solid var(--border2)}
-.btn:hover{color:var(--text);border-color:var(--muted)}
-.btn-primary{background:var(--accent);color:#fff;border:1px solid transparent}
-.btn-primary:hover{background:var(--accent2)}
-.btn-danger{background:transparent;color:var(--red);border:1px solid var(--red-bg)}
-.btn-danger:hover{background:var(--red-bg)}
-.btn-sm{padding:4px 10px;font-size:12px}
-.btn-xs{padding:3px 8px;font-size:11px}
+.btn{background:var(--surface2);color:var(--muted2);border:1px solid var(--border2)}.btn:hover{color:var(--text);border-color:var(--muted)}
+.btn-primary{background:var(--accent);color:#fff;border:1px solid transparent}.btn-primary:hover{background:var(--accent2)}
+.btn-success{background:#16a34a;color:#fff;border:1px solid transparent}.btn-success:hover{background:#15803d}
+.btn-danger{background:transparent;color:var(--red);border:1px solid var(--red-bg)}.btn-danger:hover{background:var(--red-bg)}
+.btn-sm{padding:4px 10px;font-size:12px}.btn-xs{padding:3px 8px;font-size:11px}
 input,select,textarea{background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;width:100%;outline:none;transition:border-color .15s}
 input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
-.fg{margin-bottom:16px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:20px}
-.card:hover{border-color:var(--border2)}
+.fg{margin-bottom:16px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:20px}.card:hover{border-color:var(--border2)}
 .tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em}
-.tag-running{background:var(--green-bg);color:var(--green)}
-.tag-stopped,.tag-exited{background:var(--surface3);color:var(--muted)}
+.tag-running,.tag-active{background:var(--green-bg);color:var(--green)}
+.tag-stopped,.tag-exited,.tag-inactive{background:var(--surface3);color:var(--muted)}
 .tag-error{background:var(--red-bg);color:var(--red)}
 .tag-deploying,.tag-updating{background:var(--yellow-bg);color:var(--yellow)}
 .tag-imported{background:var(--blue-bg);color:var(--blue)}
 .dot{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block}
 .dot-pulse{animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.editor{font-family:var(--mono);font-size:12px;line-height:1.6;background:#0d1117;border:1px solid var(--border2);border-radius:var(--r);color:#c9d1d9;padding:16px;width:100%;resize:vertical;min-height:300px}
+.editor:focus{border-color:var(--accent);outline:none}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:20px}
+.tab{padding:8px 16px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <script>
 const API='/api/v1';
-let S={page:'containers',deployments:[],apps:[],containers:[],logs:'',logsTarget:null,logsEs:null,deploying:false,error:null};
+let S={
+  page:'containers',nginxTab:'sites',
+  deployments:[],apps:[],containers:[],
+  nginxStatus:null,nginxSites:[],nginxMainConfig:'',nginxLogs:[],
+  editingSite:null,editingContent:'',newSiteMode:false,
+  logs:'',logsTarget:null,logsEs:null,
+  deploying:false,error:null
+};
 
 function set(p){Object.assign(S,p);render()}
 
@@ -63,7 +70,7 @@ async function api(method,path,body){
   const o={method,headers:{'Content-Type':'application/json'}};
   if(body)o.body=JSON.stringify(body);
   const r=await fetch(API+path,o);
-  const d=await r.json();
+  const d=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(d.error||'Request failed');
   return d;
 }
@@ -74,31 +81,28 @@ async function load(){
     set({containers:dc.containers||[],deployments:dd.deployments||[]});
   }catch(e){set({error:e.message})}
 }
-
-async function loadApps(){
-  try{const d=await api('GET','/apps');set({apps:d.apps||[]})}catch(e){set({error:e.message})}
+async function loadApps(){try{const d=await api('GET','/apps');set({apps:d.apps||[]})}catch(e){set({error:e.message})}}
+async function loadNginx(){
+  try{
+    const[st,si]=await Promise.all([api('GET','/nginx/status'),api('GET','/nginx/sites')]);
+    set({nginxStatus:st,nginxSites:si.sites||[]});
+  }catch(e){set({error:'nginx: '+e.message})}
 }
-
-async function act(id,action){
-  try{await api('POST','/deployments/'+id+'/'+action);await load()}catch(e){set({error:e.message})}
-}
-
-async function actC(id,action){
-  try{await api('POST','/docker/containers/'+id+'/'+action);await load()}catch(e){set({error:e.message})}
-}
-
-async function monitor(id,name){
-  try{await api('POST','/docker/import',{container_id:id,name});await load()}catch(e){set({error:e.message})}
-}
-
+async function loadNginxConfig(){try{const d=await api('GET','/nginx/config');set({nginxMainConfig:d.content})}catch(e){set({error:e.message})}}
+async function loadNginxLogs(t){try{const d=await api('GET','/nginx/logs/'+t);set({nginxLogs:d.lines||[]})}catch(e){set({error:e.message})}}
+</script>
+`
+<script>
+// Actions
+async function act(id,a){try{await api('POST','/deployments/'+id+'/'+a);await load()}catch(e){set({error:e.message})}}
+async function actC(id,a){try{await api('POST','/docker/containers/'+id+'/'+a);await load()}catch(e){set({error:e.message})}}
+async function monitor(id,name){try{await api('POST','/docker/import',{container_id:id,name});await load()}catch(e){set({error:e.message})}}
 async function remove(id,name){
   if(!confirm('Remove "'+name+'"? Containers and volumes will be deleted.'))return;
   try{await api('DELETE','/deployments/'+id);await load()}catch(e){set({error:e.message})}
 }
-
 async function deploy(e){
-  e.preventDefault();
-  const f=e.target,env={};
+  e.preventDefault();const f=e.target,env={};
   (f.env.value||'').trim().split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)env[l.slice(0,i).trim()]=l.slice(i+1).trim()});
   set({deploying:true,error:null});
   try{
@@ -107,186 +111,326 @@ async function deploy(e){
   }catch(e){set({deploying:false,error:e.message})}
 }
 
+// Nginx actions
+async function ngxAction(action){
+  try{await api('POST','/nginx/'+action);await loadNginx();set({error:null})}catch(e){set({error:e.message})}
+}
+async function ngxTest(){
+  try{const d=await api('GET','/nginx/test');alert(d.ok?'✓ Config OK\n\n'+d.output:'✗ Config Error\n\n'+d.output)}catch(e){set({error:e.message})}
+}
+async function ngxSaveMainConfig(){
+  try{await api('PUT','/nginx/config',{content:S.nginxMainConfig});alert('Saved. Reload nginx to apply.');set({error:null})}catch(e){set({error:e.message})}
+}
+async function ngxEditSite(name){
+  try{const d=await api('GET','/nginx/sites/'+name);set({editingSite:name,editingContent:d.content,newSiteMode:false})}catch(e){set({error:e.message})}
+}
+async function ngxSaveSite(){
+  try{
+    await api('PUT','/nginx/sites/'+S.editingSite,{content:S.editingContent});
+    set({editingSite:null,editingContent:''});await loadNginx();
+  }catch(e){set({error:e.message})}
+}
+async function ngxToggleSite(name,enabled){
+  try{await api('POST','/nginx/sites/'+name+'/'+(enabled?'disable':'enable'));await loadNginx()}catch(e){set({error:e.message})}
+}
+async function ngxDeleteSite(name){
+  if(!confirm('Delete site "'+name+'"?'))return;
+  try{await api('DELETE','/nginx/sites/'+name);await loadNginx()}catch(e){set({error:e.message})}
+}
+async function ngxCreateSite(e){
+  e.preventDefault();const f=e.target;
+  try{
+    await api('POST','/nginx/sites',{name:f.sitename.value,server_name:f.server_name.value,port:parseInt(f.port.value)||80,upstream:f.upstream.value});
+    set({newSiteMode:false});await loadNginx();
+  }catch(e){set({error:e.message})}
+}
+
+// Logs
 function openLogs(id,type,name){
   if(S.logsEs)S.logsEs.close();
   const path=type==='c'?'/docker/containers/'+id+'/logs':'/deployments/'+id+'/logs';
   set({page:'logs',logsTarget:{id,name},logs:''});
   const es=new EventSource(API+path);
   es.onmessage=e=>{S.logs+=e.data+'\n';const el=document.getElementById('logbox');if(el){el.textContent=S.logs;el.scrollTop=el.scrollHeight}};
-  es.onerror=()=>es.close();
-  S.logsEs=es;
+  es.onerror=()=>es.close();S.logsEs=es;
+}
+function openNginxLogs(type){
+  if(S.logsEs)S.logsEs.close();
+  set({page:'logs',logsTarget:{id:type,name:'nginx '+type+' log'},logs:''});
+  const es=new EventSource(API+'/nginx/logs/'+type+'/stream');
+  es.onmessage=e=>{S.logs+=e.data+'\n';const el=document.getElementById('logbox');if(el){el.textContent=S.logs;el.scrollTop=el.scrollHeight}};
+  es.onerror=()=>es.close();S.logsEs=es;
 }
 
 function nav(p){
   if(S.logsEs&&p!=='logs'){S.logsEs.close();S.logsEs=null}
-  set({page:p,error:null});
+  set({page:p,error:null,editingSite:null,newSiteMode:false});
   if(p==='containers')load();
   if(p==='deploy')loadApps();
+  if(p==='nginx'){loadNginx();loadNginxConfig();}
 }
 
 function icon(id){
-  return{metabase:'📊',n8n:'🔄',umami:'📈',plausible:'📉','open-webui':'🤖',plane:'✈️',mysql:'🐬',postgres:'🐘',redis:'⚡',mongodb:'🍃',nginx:'🌐',custom:'📦'}[id]||'📦';
+  const m={metabase:'📊',n8n:'🔄',umami:'📈',plausible:'📉','open-webui':'🤖',plane:'✈️',mysql:'🐬',postgres:'🐘',redis:'⚡',mongodb:'🍃',nginx:'🌐',custom:'📦'};
+  return m[id]||'📦';
 }
-
 function badge(s){
-  const cls='tag tag-'+(s||'stopped');
-  const pulse=s==='running'?' dot-pulse':'';
-  return '<span class="'+cls+'"><span class="dot'+pulse+'"></span>'+s+'</span>';
+  return'<span class="tag tag-'+(s||'stopped')+'"><span class="dot'+(s==='running'||s==='active'?' dot-pulse':'')+'"></span>'+(s||'unknown')+'</span>';
 }
-
+</script>
+`
+<script>
 function render(){
-  const nav_items=[
-    {id:'containers',label:'Containers',svg:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>'},
-    {id:'deploy',label:'Deploy App',svg:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>'},
-    {id:'settings',label:'Settings',svg:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>'},
+  const navItems=[
+    {id:'containers',label:'Containers',ico:'▣'},
+    {id:'nginx',label:'Nginx',ico:'⬡'},
+    {id:'deploy',label:'Deploy App',ico:'＋'},
+    {id:'settings',label:'Settings',ico:'⚙'},
   ];
   const sidebar='<nav style="width:196px;min-width:196px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh;position:sticky;top:0">'+
     '<div style="padding:18px 16px 14px;border-bottom:1px solid var(--border)">'+
-      '<div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">⚓</span>'+
-      '<div><div style="font-weight:700;font-size:14px;letter-spacing:-.3px">Vessel</div>'+
-      '<div style="font-size:10px;color:var(--muted)">v0.1.0</div></div></div></div>'+
+      '<div style="display:flex;align-items:center;gap:9px">'+
+        '<span style="font-size:18px">⚓</span>'+
+        '<div><div style="font-weight:700;font-size:14px;letter-spacing:-.3px">Vessel</div>'+
+        '<div style="font-size:10px;color:var(--muted)">v0.1.0</div></div></div></div>'+
     '<div style="padding:6px">'+
-    nav_items.map(n=>{
-      const a=S.page===n.id;
-      return '<a href="#" onclick="nav(\''+n.id+'\');return false" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r);color:'+(a?'var(--text)':'var(--muted)')+';background:'+(a?'var(--surface2)':'transparent')+';font-weight:'+(a?'500':'400')+';margin-bottom:1px;font-size:13px;transition:all .15s">'+
-        '<span style="color:'+(a?'var(--accent)':'var(--muted)')+'">'+n.svg+'</span>'+n.label+'</a>';
+    navItems.map(n=>{
+      const a=S.page===n.id||(S.page==='logs'&&n.id==='containers');
+      return'<a href="#" onclick="nav(\''+n.id+'\');return false" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r);color:'+(a?'var(--text)':'var(--muted)')+';background:'+(a?'var(--surface2)':'transparent')+';font-weight:'+(a?'500':'400')+';margin-bottom:1px;font-size:13px;transition:all .15s">'+
+        '<span style="font-size:14px;color:'+(a?'var(--accent)':'var(--muted)')+'">'+n.ico+'</span>'+n.label+'</a>';
     }).join('')+
     '</div><div style="flex:1"></div>'+
-    '<div style="padding:12px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">'+
+    '<div style="padding:12px 16px;border-top:1px solid var(--border);font-size:11px">'+
       '<a href="https://github.com/Yash121l/Vessel" target="_blank" style="color:var(--muted)">GitHub ↗</a></div></nav>';
 
   const errBanner=S.error?'<div style="background:var(--red-bg);border:1px solid #ef444430;border-radius:var(--r);padding:10px 14px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center"><span style="color:var(--red);font-size:13px">'+S.error+'</span><button class="btn btn-xs" onclick="set({error:null})">✕</button></div>':'';
 
-  const content={
-    containers:pageContainers,
-    deploy:pageDeploy,
-    logs:pageLogs,
-    settings:pageSettings,
-  }[S.page]||pageContainers;
+  const pages={containers:pageContainers,nginx:pageNginx,deploy:pageDeploy,logs:pageLogs,settings:pageSettings};
+  const content=(pages[S.page]||pageContainers)();
 
   document.getElementById('app').innerHTML=
     '<div style="display:flex;min-height:100vh">'+sidebar+
-    '<main style="flex:1;overflow:auto"><div style="max-width:960px;margin:0 auto;padding:28px 24px">'+errBanner+content()+'</div></main></div>';
+    '<main style="flex:1;overflow:auto"><div style="max-width:980px;margin:0 auto;padding:28px 24px">'+errBanner+content+'</div></main></div>';
 }
 
+// ── Containers page ───────────────────────────────────────────────────────────
 function pageContainers(){
   const managed=S.deployments.filter(d=>!d.imported);
   const imported=S.deployments.filter(d=>d.imported);
   const trackedIds=new Set(S.deployments.map(d=>d.container_id).filter(Boolean));
   const untracked=S.containers.filter(c=>!c.managed_by_vessel&&!trackedIds.has(c.id));
-  const total=S.containers.length;
 
-  let html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">'+
+  let h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">'+
     '<div><h1 style="font-size:19px;font-weight:700;letter-spacing:-.4px">Containers</h1>'+
-    '<p style="color:var(--muted);font-size:12px;margin-top:2px">'+total+' container'+(total!==1?'s':'')+' on this host</p></div>'+
+    '<p style="color:var(--muted);font-size:12px;margin-top:2px">'+S.containers.length+' on this host</p></div>'+
     '<div style="display:flex;gap:8px">'+
       '<button class="btn btn-sm" onclick="load()">↺ Refresh</button>'+
       '<button class="btn-primary btn-sm" onclick="nav(\'deploy\')">+ Deploy</button>'+
     '</div></div>';
 
-  if(managed.length){
-    html+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Vessel Managed</div>';
-    html+=managed.map(cardManaged).join('');
-    html+='<div style="margin-bottom:24px"></div>';
-  }
-  if(imported.length){
-    html+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Monitored</div>';
-    html+=imported.map(cardImported).join('');
-    html+='<div style="margin-bottom:24px"></div>';
-  }
-  if(untracked.length){
-    html+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Discovered — click Monitor to track</div>';
-    html+=untracked.map(cardDiscovered).join('');
-  }
+  if(managed.length){h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Vessel Managed</div>'+managed.map(cardManaged).join('')+'<div style="margin-bottom:24px"></div>'}
+  if(imported.length){h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Monitored</div>'+imported.map(cardImported).join('')+'<div style="margin-bottom:24px"></div>'}
+  if(untracked.length){h+='<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Discovered — click Monitor to track</div>'+untracked.map(cardDiscovered).join('')}
   if(!managed.length&&!imported.length&&!untracked.length){
-    html+='<div style="text-align:center;padding:72px 20px"><div style="font-size:44px;margin-bottom:14px">🚀</div>'+
+    h+='<div style="text-align:center;padding:72px 20px"><div style="font-size:44px;margin-bottom:14px">🚀</div>'+
       '<div style="font-size:16px;font-weight:600;margin-bottom:8px">No containers yet</div>'+
-      '<div style="color:var(--muted);margin-bottom:20px;font-size:13px">Deploy your first self-hosted app in seconds</div>'+
+      '<div style="color:var(--muted);margin-bottom:20px;font-size:13px">Deploy your first self-hosted app</div>'+
       '<button class="btn-primary" onclick="nav(\'deploy\')">Deploy an app</button></div>';
   }
-  return html;
+  return h;
 }
 
 function cardManaged(d){
-  const running=d.status==='running';
-  return '<div class="card" style="margin-bottom:8px">'+
-    '<div style="display:flex;align-items:center;gap:12px">'+
-      '<div style="font-size:24px;width:36px;text-align:center;flex-shrink:0">'+icon(d.app_id)+'</div>'+
-      '<div style="flex:1;min-width:0">'+
-        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
-          '<span style="font-weight:600;font-size:14px">'+d.name+'</span>'+badge(d.status)+
-        '</div>'+
-        '<div style="color:var(--muted);font-size:11px;margin-top:2px">'+d.app_id+
-          (d.domain?' · <a href="https://'+d.domain+'" target="_blank">'+d.domain+'</a>':'')+
-        '</div>'+
-      '</div>'+
-      '<div style="display:flex;gap:5px;flex-shrink:0">'+
-        (running?'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'stop\')">Stop</button>':
-                 '<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'start\')">Start</button>')+
-        '<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'restart\')">Restart</button>'+
-        '<button class="btn btn-sm" onclick="openLogs(\''+d.id+'\',\'d\',\''+d.name+'\')">Logs</button>'+
-        '<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'update\')">Update</button>'+
-        '<button class="btn-danger btn-sm" onclick="remove(\''+d.id+'\',\''+d.name+'\')">Remove</button>'+
-      '</div>'+
-    '</div></div>';
+  const r=d.status==='running';
+  return'<div class="card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:12px">'+
+    '<div style="font-size:24px;width:36px;text-align:center;flex-shrink:0">'+icon(d.app_id)+'</div>'+
+    '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+      '<span style="font-weight:600;font-size:14px">'+d.name+'</span>'+badge(d.status)+'</div>'+
+      '<div style="color:var(--muted);font-size:11px;margin-top:2px">'+d.app_id+(d.domain?' · <a href="https://'+d.domain+'" target="_blank">'+d.domain+'</a>':'')+'</div></div>'+
+    '<div style="display:flex;gap:5px;flex-shrink:0">'+
+      (r?'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'stop\')">Stop</button>':'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'start\')">Start</button>')+
+      '<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'restart\')">Restart</button>'+
+      '<button class="btn btn-sm" onclick="openLogs(\''+d.id+'\',\'d\',\''+d.name+'\')">Logs</button>'+
+      '<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'update\')">Update</button>'+
+      '<button class="btn-danger btn-sm" onclick="remove(\''+d.id+'\',\''+d.name+'\')">Remove</button>'+
+    '</div></div></div>';
 }
 
 function cardImported(d){
-  const running=d.status==='running';
+  const r=d.status==='running';
   const ports=d.ports?d.ports.split(', ').filter(Boolean):[];
-  return '<div class="card" style="margin-bottom:8px">'+
-    '<div style="display:flex;align-items:center;gap:12px">'+
-      '<div style="font-size:24px;width:36px;text-align:center;flex-shrink:0">'+icon(d.app_id)+'</div>'+
-      '<div style="flex:1;min-width:0">'+
-        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
-          '<span style="font-weight:600;font-size:14px">'+d.name+'</span>'+badge(d.status)+
-          '<span class="tag tag-imported">monitored</span>'+
-        '</div>'+
-        '<div style="color:var(--muted);font-size:11px;margin-top:2px">'+
-          (d.image||d.app_id)+(ports.length?' · '+ports.slice(0,2).join(', '):'')+
-        '</div>'+
-      '</div>'+
-      '<div style="display:flex;gap:5px;flex-shrink:0">'+
-        (running?'<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'stop\')">Stop</button>':
-                 '<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'start\')">Start</button>')+
-        '<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'restart\')">Restart</button>'+
-        '<button class="btn btn-sm" onclick="openLogs(\''+d.container_id+'\',\'c\',\''+d.name+'\')">Logs</button>'+
-      '</div>'+
-    '</div></div>';
+  return'<div class="card" style="margin-bottom:8px"><div style="display:flex;align-items:center;gap:12px">'+
+    '<div style="font-size:24px;width:36px;text-align:center;flex-shrink:0">'+icon(d.app_id)+'</div>'+
+    '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+      '<span style="font-weight:600;font-size:14px">'+d.name+'</span>'+badge(d.status)+'<span class="tag tag-imported">monitored</span></div>'+
+      '<div style="color:var(--muted);font-size:11px;margin-top:2px">'+(d.image||d.app_id)+(ports.length?' · '+ports.slice(0,2).join(', '):'')+'</div></div>'+
+    '<div style="display:flex;gap:5px;flex-shrink:0">'+
+      (r?'<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'stop\')">Stop</button>':'<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'start\')">Start</button>')+
+      '<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'restart\')">Restart</button>'+
+      '<button class="btn btn-sm" onclick="openLogs(\''+d.container_id+'\',\'c\',\''+d.name+'\')">Logs</button>'+
+    '</div></div></div>';
 }
 
 function cardDiscovered(c){
-  const ports=c.ports&&c.ports.length?c.ports.slice(0,3).join(', '):'no ports exposed';
-  return '<div class="card" style="margin-bottom:8px;border-style:dashed">'+
-    '<div style="display:flex;align-items:center;gap:12px">'+
-      '<div style="font-size:24px;width:36px;text-align:center;flex-shrink:0">'+icon(c.name)+'</div>'+
-      '<div style="flex:1;min-width:0">'+
-        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
-          '<span style="font-weight:600;font-size:14px">'+c.name+'</span>'+badge(c.state)+
+  const ports=c.ports&&c.ports.length?c.ports.slice(0,3).join(', '):'no ports';
+  return'<div class="card" style="margin-bottom:8px;border-style:dashed"><div style="display:flex;align-items:center;gap:12px">'+
+    '<div style="font-size:24px;width:36px;text-align:center;flex-shrink:0">'+icon(c.name)+'</div>'+
+    '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+      '<span style="font-weight:600;font-size:14px">'+c.name+'</span>'+badge(c.state)+'</div>'+
+      '<div style="color:var(--muted);font-size:11px;margin-top:2px">'+c.image+' · '+ports+'</div></div>'+
+    '<div style="display:flex;gap:5px;flex-shrink:0">'+
+      '<button class="btn btn-sm" onclick="openLogs(\''+c.id+'\',\'c\',\''+c.name+'\')">Logs</button>'+
+      '<button class="btn-primary btn-sm" onclick="monitor(\''+c.id+'\',\''+c.name+'\')">Monitor</button>'+
+    '</div></div></div>';
+}
+</script>
+`
+<script>
+// ── Nginx page ────────────────────────────────────────────────────────────────
+function pageNginx(){
+  const st=S.nginxStatus;
+  const statusBar=st?
+    '<div class="card" style="margin-bottom:20px;padding:14px 20px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">'+
+        '<div style="display:flex;align-items:center;gap:16px">'+
+          '<span style="font-size:22px">🌐</span>'+
+          '<div><div style="font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px">Nginx '+badge(st.running?'active':'inactive')+'</div>'+
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+(st.version||'')+'</div></div>'+
         '</div>'+
-        '<div style="color:var(--muted);font-size:11px;margin-top:2px">'+c.image+' · '+ports+'</div>'+
-      '</div>'+
-      '<div style="display:flex;gap:5px;flex-shrink:0">'+
-        '<button class="btn btn-sm" onclick="openLogs(\''+c.id+'\',\'c\',\''+c.name+'\')">Logs</button>'+
-        '<button class="btn-primary btn-sm" onclick="monitor(\''+c.id+'\',\''+c.name+'\')">Monitor</button>'+
-      '</div>'+
-    '</div></div>';
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+          '<button class="btn btn-sm" onclick="ngxTest()">Test Config</button>'+
+          '<button class="btn btn-sm" onclick="ngxAction(\'reload\')">Reload</button>'+
+          '<button class="btn btn-sm" onclick="ngxAction(\'restart\')">Restart</button>'+
+          (st.running?'<button class="btn-danger btn-sm" onclick="ngxAction(\'stop\')">Stop</button>':'<button class="btn-success btn-sm" onclick="ngxAction(\'start\')">Start</button>')+
+        '</div>'+
+      '</div></div>':'<div class="card" style="margin-bottom:20px;color:var(--muted);font-size:13px">Loading nginx status…</div>';
+
+  const tabs=['sites','config','logs'].map(t=>
+    '<span class="tab'+(S.nginxTab===t?' active':'')+'" onclick="set({nginxTab:\''+t+'\'})">'+
+      {sites:'Sites',config:'nginx.conf',logs:'Logs'}[t]+'</span>').join('');
+
+  let tabContent='';
+  if(S.nginxTab==='sites') tabContent=nginxSitesTab();
+  else if(S.nginxTab==='config') tabContent=nginxConfigTab();
+  else if(S.nginxTab==='logs') tabContent=nginxLogsTab();
+
+  return'<div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">'+
+      '<h1 style="font-size:19px;font-weight:700;letter-spacing:-.4px">Nginx</h1>'+
+      '<button class="btn btn-sm" onclick="loadNginx()">↺ Refresh</button>'+
+    '</div>'+
+    statusBar+
+    '<div class="tabs">'+tabs+'</div>'+
+    tabContent+'</div>';
 }
 
+function nginxSitesTab(){
+  if(S.editingSite){
+    return'<div>'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">'+
+        '<button class="btn btn-sm" onclick="set({editingSite:null,editingContent:\'\'})">← Back</button>'+
+        '<span style="font-weight:600">'+S.editingSite+'</span>'+
+      '</div>'+
+      '<textarea class="editor" style="min-height:420px" oninput="S.editingContent=this.value">'+escHtml(S.editingContent)+'</textarea>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">'+
+        '<button class="btn" onclick="set({editingSite:null,editingContent:\'\'})">Cancel</button>'+
+        '<button class="btn-primary" onclick="ngxSaveSite()">Save</button>'+
+      '</div></div>';
+  }
+
+  if(S.newSiteMode){
+    return'<div>'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">'+
+        '<button class="btn btn-sm" onclick="set({newSiteMode:false})">← Back</button>'+
+        '<span style="font-weight:600">New Site</span>'+
+      '</div>'+
+      '<form onsubmit="ngxCreateSite(event)" class="card">'+
+        '<div class="grid2">'+
+          '<div class="fg"><label>Config filename *</label><input name="sitename" placeholder="myapp.conf" required></div>'+
+          '<div class="fg"><label>Server name (domain) *</label><input name="server_name" placeholder="app.example.com" required></div>'+
+        '</div>'+
+        '<div class="grid2">'+
+          '<div class="fg"><label>Listen port</label><input name="port" type="number" value="80"></div>'+
+          '<div class="fg"><label>Upstream (host:port)</label><input name="upstream" placeholder="localhost:3000"></div>'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+          '<button type="button" class="btn" onclick="set({newSiteMode:false})">Cancel</button>'+
+          '<button type="submit" class="btn-primary">Create Site</button>'+
+        '</div>'+
+      '</form></div>';
+  }
+
+  const sites=S.nginxSites;
+  return'<div>'+
+    '<div style="display:flex;justify-content:flex-end;margin-bottom:14px">'+
+      '<button class="btn-primary btn-sm" onclick="set({newSiteMode:true})">+ New Site</button>'+
+    '</div>'+
+    (sites.length===0?'<div style="text-align:center;padding:40px;color:var(--muted)">No site configs found in sites-available</div>':
+      sites.map(s=>'<div class="card" style="margin-bottom:8px">'+
+        '<div style="display:flex;align-items:center;gap:12px">'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+              '<span style="font-weight:600;font-size:14px;font-family:var(--mono)">'+s.name+'</span>'+
+              (s.enabled?'<span class="tag tag-active">enabled</span>':'<span class="tag tag-inactive">disabled</span>')+
+            '</div>'+
+            '<div style="color:var(--muted);font-size:11px;margin-top:2px">'+s.path+'</div>'+
+          '</div>'+
+          '<div style="display:flex;gap:5px;flex-shrink:0">'+
+            '<button class="btn btn-sm" onclick="ngxEditSite(\''+s.name+'\')">Edit</button>'+
+            (s.enabled?
+              '<button class="btn btn-sm" onclick="ngxToggleSite(\''+s.name+'\',true)">Disable</button>':
+              '<button class="btn-success btn-sm" onclick="ngxToggleSite(\''+s.name+'\',false)">Enable</button>')+
+            '<button class="btn-danger btn-sm" onclick="ngxDeleteSite(\''+s.name+'\')">Delete</button>'+
+          '</div>'+
+        '</div></div>').join(''))+
+  '</div>';
+}
+
+function nginxConfigTab(){
+  return'<div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+      '<span style="font-size:12px;color:var(--muted);font-family:var(--mono)">/etc/nginx/nginx.conf</span>'+
+      '<div style="display:flex;gap:8px">'+
+        '<button class="btn btn-sm" onclick="ngxTest()">Test</button>'+
+        '<button class="btn-primary btn-sm" onclick="ngxSaveMainConfig()">Save</button>'+
+      '</div>'+
+    '</div>'+
+    '<textarea class="editor" style="min-height:500px" oninput="S.nginxMainConfig=this.value">'+escHtml(S.nginxMainConfig)+'</textarea>'+
+  '</div>';
+}
+
+function nginxLogsTab(){
+  return'<div>'+
+    '<div style="display:flex;gap:8px;margin-bottom:16px">'+
+      '<button class="btn btn-sm" onclick="openNginxLogs(\'access\')">▶ Stream Access Log</button>'+
+      '<button class="btn btn-sm" onclick="openNginxLogs(\'error\')">▶ Stream Error Log</button>'+
+      '<button class="btn btn-sm" onclick="loadNginxLogs(\'access\')">Load Access (200 lines)</button>'+
+      '<button class="btn btn-sm" onclick="loadNginxLogs(\'error\')">Load Error (200 lines)</button>'+
+    '</div>'+
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">'+
+      '<pre style="padding:14px;font-size:11px;font-family:var(--mono);height:460px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:#a8b4c8;line-height:1.6">'+
+        (S.nginxLogs.length?escHtml(S.nginxLogs.join('\n')):'Click a button above to load logs')+
+      '</pre></div></div>';
+}
+
+function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+</script>
+`
+<script>
+// ── Deploy page ───────────────────────────────────────────────────────────────
 function pageDeploy(){
   const apps=S.apps;
-  return '<div>'+
-    '<div style="margin-bottom:22px">'+
-      '<h1 style="font-size:19px;font-weight:700;letter-spacing:-.4px">Deploy App</h1>'+
-      '<p style="color:var(--muted);font-size:12px;margin-top:2px">Curated self-hosted applications</p></div>'+
+  return'<div>'+
+    '<div style="margin-bottom:22px"><h1 style="font-size:19px;font-weight:700;letter-spacing:-.4px">Deploy App</h1>'+
+    '<p style="color:var(--muted);font-size:12px;margin-top:2px">Curated self-hosted applications</p></div>'+
     '<form onsubmit="deploy(event)">'+
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:20px">'+
         apps.map(a=>'<label style="cursor:pointer">'+
           '<input type="radio" name="app_id" value="'+a.id+'" style="display:none" onchange="selectApp(\''+a.id+'\')" required>'+
           '<div id="ac-'+a.id+'" style="background:var(--surface);border:2px solid var(--border);border-radius:var(--r2);padding:14px 10px;text-align:center;transition:all .15s">'+
-            '<div style="font-size:26px;margin-bottom:6px">'+icon(a.id)+'</div>'+
-            '<div style="font-weight:600;font-size:12px">'+a.name+'</div>'+
-            '<div style="font-size:10px;color:var(--muted);margin-top:2px">'+a.category+'</div>'+
+            '<div style="font-size:26px;margin-bottom:6px">'+(a.icon||icon(a.id))+'</div>'+
+            '<div style="font-weight:600;font-size:12px">'+(a.name||a.id)+'</div>'+
+            '<div style="font-size:10px;color:var(--muted);margin-top:2px">'+(a.category||'')+'</div>'+
           '</div></label>').join('')+
       '</div>'+
       '<div class="card">'+
@@ -301,8 +445,7 @@ function pageDeploy(){
           '<button type="button" class="btn" onclick="nav(\'containers\')">Cancel</button>'+
           '<button type="submit" class="btn-primary"'+(S.deploying?' disabled':'')+'>'+
             (S.deploying?'⏳ Deploying…':'🚀 Deploy')+'</button>'+
-        '</div>'+
-      '</div></form></div>';
+        '</div></div></form></div>';
 }
 
 function selectApp(id){
@@ -319,9 +462,10 @@ function selectApp(id){
       '<span style="color:var(--muted)">'+e.description+'</span></div>').join('')+'</div>';
 }
 
+// ── Logs page ─────────────────────────────────────────────────────────────────
 function pageLogs(){
   const t=S.logsTarget;
-  return '<div>'+
+  return'<div>'+
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">'+
       '<button class="btn btn-sm" onclick="nav(\'containers\')">← Back</button>'+
       '<h1 style="font-size:17px;font-weight:700">Logs'+(t?' — '+t.name:'')+'</h1>'+
@@ -337,10 +481,10 @@ function pageLogs(){
         (S.logs||'Connecting…')+'</pre></div></div>';
 }
 
+// ── Settings page ─────────────────────────────────────────────────────────────
 function pageSettings(){
-  function row(l,v){return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted);font-size:13px">'+l+'</span><code style="font-family:var(--mono);font-size:12px;color:var(--accent2)">'+v+'</code></div>'}
-  return '<div>'+
-    '<div style="margin-bottom:22px"><h1 style="font-size:19px;font-weight:700;letter-spacing:-.4px">Settings</h1></div>'+
+  function row(l,v){return'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted);font-size:13px">'+l+'</span><code style="font-family:var(--mono);font-size:12px;color:var(--accent2)">'+v+'</code></div>'}
+  return'<div><div style="margin-bottom:22px"><h1 style="font-size:19px;font-weight:700;letter-spacing:-.4px">Settings</h1></div>'+
     '<div class="card" style="max-width:460px">'+
       row('Version','0.1.0')+row('Data directory','/var/lib/vessel')+
       row('Config','/etc/vessel/config.yaml')+row('UI port','4800')+
@@ -349,6 +493,7 @@ function pageSettings(){
       '</div></div></div>';
 }
 
+// ── Boot ──────────────────────────────────────────────────────────────────────
 set({});
 load();
 </script>
