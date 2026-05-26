@@ -44,9 +44,55 @@ env_vars:
     default: ""
     required: true
     secret: true
+  - key: DB_TYPE
+    description: "Database type: sqlite (default) or postgresdb"
+    default: sqlite
+    required: false
+  - key: DB_POSTGRESDB_HOST
+    description: PostgreSQL host (when DB_TYPE=postgresdb)
+    default: n8n-db
+    required: false
+  - key: DB_POSTGRESDB_PORT
+    description: PostgreSQL port
+    default: "5432"
+    required: false
+  - key: DB_POSTGRESDB_DATABASE
+    description: PostgreSQL database name
+    default: n8n
+    required: false
+  - key: DB_POSTGRESDB_USER
+    description: PostgreSQL username
+    default: n8n
+    required: false
+  - key: DB_POSTGRESDB_PASSWORD
+    description: PostgreSQL password
+    default: n8n_password
+    required: false
+    secret: true
 
 health_check:
   test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
   interval: 30s
   timeout: 10s
   retries: 3
+
+# Optional sidecar: skip "n8n-db" to use your own external PostgreSQL.
+# When using the managed DB, also set DB_TYPE=postgresdb in env vars.
+extra_services:
+  - name: n8n-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: n8n
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: n8n_password
+    volumes:
+      - name: n8n-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U n8n"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

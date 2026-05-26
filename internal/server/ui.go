@@ -213,6 +213,13 @@ async function loadComposeDetail(id){
   try{const d=await api('GET','/deployments/'+id+'/compose');set({composeDetail:d,composeId:id})}
   catch(e){set({error:e.message})}
 }
+async function removeExternalStack(name){
+  if(!confirm('Remove stack "'+name+'"?\n\nThis will run docker compose down and stop/remove all its containers. This cannot be undone.'))return;
+  try{
+    await api('DELETE','/docker/compose/stacks/'+encodeURIComponent(name));
+    await loadComposeStacks();
+  }catch(e){set({error:e.message})}
+}
 async function loadComposeStacks(){
   try{
     const[dd,ds]=await Promise.all([api('GET','/deployments'),api('GET','/docker/compose/stacks')]);
@@ -624,6 +631,7 @@ function pageCompose(){
       }).join('')+
       externalStacks.map(s=>{
         const isRunning=(s.status||'').toLowerCase().includes('running');
+        const isMissing=(s.status||'').toLowerCase().includes('exited')||(s.config_files&&!s.config_files.startsWith('/opt/apps'));
         return'<div class="card" style="padding:18px 20px;border-color:var(--border2)">'+
           '<div style="display:flex;align-items:center;gap:14px">'+
             imgAvatar('',40)+
@@ -633,9 +641,12 @@ function pageCompose(){
                 '<span class="tag '+(isRunning?'tag-running':'tag-stopped')+'"><span class="dot'+(isRunning?' pulse':'')+'"></span>'+escHtml(s.status)+'</span>'+
                 '<span class="tag" style="background:var(--surface3);color:var(--muted)">external</span>'+
               '</div>'+
-              '<div style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+escHtml(s.config_files||'')+'</div>'+
+              '<div style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+escHtml(s.config_files||'—')+'</div>'+
             '</div>'+
-            '<div style="font-size:11px;color:var(--muted);flex-shrink:0">Not managed by Vessel</div>'+
+            '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
+              '<span style="font-size:11px;color:var(--muted)">Not managed by Vessel</span>'+
+              '<button class="btn btn-sm btn-danger" onclick="removeExternalStack(\''+escAttr(s.name)+'\')" style="display:flex;align-items:center;gap:5px">'+ico('trash',11)+' Clean up</button>'+
+            '</div>'+
           '</div>'+
         '</div>';
       }).join('')+

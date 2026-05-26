@@ -38,10 +38,20 @@ func registerRoutes(
 	r.Use(requirePermission())
 	r.GET("/me", me())
 	r.POST("/logout", logout(db))
+
+	// Vessel app users (login accounts)
 	r.GET("/users", listUsers(db))
 	r.POST("/users", createUser(db))
 	r.PUT("/users/:id", updateUser(db))
 	r.DELETE("/users/:id", deleteUser(db))
+
+	// OS-level user management (Linux accounts)
+	r.GET("/system/users", listOSUsers())
+	r.GET("/system/users/:username", getOSUser())
+	r.POST("/system/users", createOSUser())
+	r.PUT("/system/users/:username", updateOSUser())
+	r.DELETE("/system/users/:username", deleteOSUser())
+	r.GET("/system/groups", listOSGroups())
 
 	// Apps (templates)
 	r.GET("/apps", listApps(reg))
@@ -66,6 +76,7 @@ func registerRoutes(
 	// Docker discovery
 	r.GET("/docker/containers", listDockerContainers())
 	r.GET("/docker/compose/stacks", listComposeStacks())
+	r.DELETE("/docker/compose/stacks/:name", removeComposeStack())
 	r.POST("/docker/import", importContainer(db))
 	r.POST("/docker/deploy", deployCustomContainer(engine))
 	r.GET("/docker/search", dockerHubSearch())
@@ -152,10 +163,14 @@ func getDeployment(db *store.DB, reg *registry.Registry) gin.HandlerFunc {
 }
 
 type createDeploymentRequest struct {
-	AppID  string            `json:"app_id" binding:"required"`
-	Name   string            `json:"name" binding:"required"`
-	Domain string            `json:"domain"`
-	Env    map[string]string `json:"env"`
+	AppID        string            `json:"app_id" binding:"required"`
+	Name         string            `json:"name" binding:"required"`
+	Domain       string            `json:"domain"`
+	Env          map[string]string `json:"env"`
+	// SkipServices lists optional sidecar service names to omit.
+	// Use this when you want to provide your own external database/cache/etc.
+	// Example: ["n8n-db"] to skip the managed Postgres and supply DATABASE_URL yourself.
+	SkipServices []string          `json:"skip_services"`
 }
 
 func createDeployment(engine *deployment.Engine, reg *registry.Registry) gin.HandlerFunc {
@@ -178,14 +193,41 @@ func createDeployment(engine *deployment.Engine, reg *registry.Registry) gin.Han
 			return
 		}
 
+		// Validate that any skipped services are actually optional in the template
+		if len(req.SkipServices) > 0 {
+			tmpl, ok := reg.Get(req.AppID)
+			if !ok {
+				c.JSON(400, gin.H{"error": "unknown app: " + req.AppID})
+				return
+			}
+			optionalNames := map[string]bool{}
+			for _, svc := range tmpl.ExtraServices {
+				if svc.Optional {
+					optionalNames[svc.Name] = true
+				}
+			}
+			for _, name := range req.SkipServices {
+				if !optionalNames[name] {
+					c.JSON(400, gin.H{"error": "service '" + name + "' is not optional and cannot be skipped"})
+					return
+				}
+			}
+		}
+
+		skipSet := make(map[string]bool, len(req.SkipServices))
+		for _, s := range req.SkipServices {
+			skipSet[s] = true
+		}
+
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
 		defer cancel()
 
 		d, err := engine.Deploy(ctx, deployment.DeployRequest{
-			AppID:  req.AppID,
-			Name:   req.Name,
-			Domain: req.Domain,
-			Env:    req.Env,
+			AppID:        req.AppID,
+			Name:         req.Name,
+			Domain:       req.Domain,
+			Env:          req.Env,
+			SkipServices: skipSet,
 		})
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
@@ -700,6 +742,38 @@ func listComposeStacks() gin.HandlerFunc {
 func isVesselContainer(nameOrID string) bool {
 	lower := strings.ToLower(nameOrID)
 	return strings.Contains(lower, "vessel")
+}
+
+// removeComposeStack tears down an external (non-Vessel-managed) compose stack by name.
+// It uses `docker compose --project-name <name> down` which works even when the
+// original compose file no longer exists, because Docker tracks the stack by project name.
+func removeComposeStack() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		name := c.Param("name")
+		if name == "" {
+			c.JSON(400, gin.H{"error": "stack name is required"})
+			return
+		}
+		// Safety: don't allow removing Vessel-managed stacks via this endpoint
+		if isVesselContainer(name) {
+			c.JSON(400, gin.H{"error": "cannot remove a Vessel-managed stack via this endpoint"})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Minute)
+		defer cancel()
+
+		// --remove-orphans cleans up containers whose service definition was removed
+		cmd := exec.CommandContext(ctx, "docker", "compose",
+			"--project-name", name,
+			"down", "--remove-orphans")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			c.JSON(500, gin.H{"error": "docker compose down failed: " + strings.TrimSpace(string(out))})
+			return
+		}
+		c.JSON(200, gin.H{"status": "removed", "name": name})
+	}
 }
 
 // guessAppID maps a container image/name to a known Vessel app template ID.

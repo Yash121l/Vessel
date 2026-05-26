@@ -58,7 +58,10 @@ type ComposeNetwork struct {
 }
 
 // GenerateCompose builds a Docker Compose file for a deployment.
-func GenerateCompose(tmpl *registry.AppTemplate, d *store.Deployment) (*ComposeFile, error) {
+// skipServices is a set of service names (bare names, e.g. "umami-db") to omit
+// from the generated compose file. This is used when the user opts to provide
+// their own external instance of an optional sidecar (e.g. an existing database).
+func GenerateCompose(tmpl *registry.AppTemplate, d *store.Deployment, skipServices map[string]bool) (*ComposeFile, error) {
 	networkName := fmt.Sprintf("vessel-%s", d.Name)
 
 	cf := &ComposeFile{
@@ -140,6 +143,10 @@ func GenerateCompose(tmpl *registry.AppTemplate, d *store.Deployment) (*ComposeF
 
 	for _, svc := range tmpl.ExtraServices {
 		svcName := fmt.Sprintf("%s-%s", d.Name, svc.Name)
+		// Skip services the user opted out of (they'll provide their own)
+		if skipServices != nil && skipServices[svc.Name] {
+			continue
+		}
 		// Also register the bare name as an alias for inter-service DNS
 		extraSvc := ComposeService{
 			Image:       svc.Image,

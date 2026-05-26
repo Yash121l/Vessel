@@ -43,6 +43,10 @@ type DeployRequest struct {
 	Name   string
 	Domain string
 	Env    map[string]string
+	// SkipServices is a set of optional sidecar service names to omit from the
+	// generated compose file. The user is responsible for providing those
+	// services externally (e.g. an existing database).
+	SkipServices map[string]bool
 }
 
 // RegisterTemp adds a synthetic template to the registry for one-off custom deployments.
@@ -80,7 +84,7 @@ func (e *Engine) Deploy(ctx context.Context, req DeployRequest) (*store.Deployme
 	}
 
 	// Generate and write compose file
-	cf, err := GenerateCompose(tmpl, d)
+	cf, err := GenerateCompose(tmpl, d, req.SkipServices)
 	if err != nil {
 		return nil, fmt.Errorf("generate compose: %w", err)
 	}

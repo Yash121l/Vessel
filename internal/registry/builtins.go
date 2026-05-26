@@ -29,8 +29,13 @@ func metabase() *AppTemplate {
 			{Name: "metabase-data", MountPath: "/metabase-data", Description: "Metabase application data"},
 		},
 		EnvVars: []EnvVar{
-			{Key: "MB_DB_TYPE", Default: "h2", Description: "Database type (h2 for embedded)", Required: false},
-			{Key: "MB_DB_FILE", Default: "/metabase-data/metabase.db", Description: "Database file path", Required: false},
+			{Key: "MB_DB_TYPE", Default: "h2", Description: "Database type: h2 (embedded) or postgres", Required: false},
+			{Key: "MB_DB_FILE", Default: "/metabase-data/metabase.db", Description: "Database file path (h2 only)", Required: false},
+			{Key: "MB_DB_HOST", Default: "metabase-db", Description: "PostgreSQL host (when MB_DB_TYPE=postgres)", Required: false},
+			{Key: "MB_DB_PORT", Default: "5432", Description: "PostgreSQL port", Required: false},
+			{Key: "MB_DB_DBNAME", Default: "metabase", Description: "PostgreSQL database name", Required: false},
+			{Key: "MB_DB_USER", Default: "metabase", Description: "PostgreSQL username", Required: false},
+			{Key: "MB_DB_PASS", Default: "metabase_password", Description: "PostgreSQL password", Required: false, Secret: true},
 			{Key: "JAVA_TIMEZONE", Default: "UTC", Description: "JVM timezone", Required: false},
 		},
 		HealthCheck: HealthCheck{
@@ -38,6 +43,28 @@ func metabase() *AppTemplate {
 			Interval: "30s",
 			Timeout:  "10s",
 			Retries:  5,
+		},
+		ExtraServices: []ServiceDef{
+			{
+				Name:     "metabase-db",
+				Image:    "postgres:15-alpine",
+				Optional: true,
+				Role:     "database",
+				Environment: map[string]string{
+					"POSTGRES_DB":       "metabase",
+					"POSTGRES_USER":     "metabase",
+					"POSTGRES_PASSWORD": "metabase_password",
+				},
+				Volumes: []Volume{
+					{Name: "metabase-db-data", MountPath: "/var/lib/postgresql/data", Description: "PostgreSQL data"},
+				},
+				HealthCheck: HealthCheck{
+					Test:     []string{"CMD-SHELL", "pg_isready -U metabase"},
+					Interval: "10s",
+					Timeout:  "5s",
+					Retries:  5,
+				},
+			},
 		},
 	}
 }
@@ -66,12 +93,40 @@ func n8n() *AppTemplate {
 			{Key: "N8N_PORT", Default: "5678", Description: "Port to listen on", Required: false},
 			{Key: "WEBHOOK_URL", Default: "", Description: "Public webhook URL (your domain)", Required: false},
 			{Key: "GENERIC_TIMEZONE", Default: "UTC", Description: "Timezone for workflows", Required: false},
+			{Key: "DB_TYPE", Default: "sqlite", Description: "Database type: sqlite or postgresdb", Required: false},
+			{Key: "DB_POSTGRESDB_HOST", Default: "n8n-db", Description: "PostgreSQL host (when DB_TYPE=postgresdb)", Required: false},
+			{Key: "DB_POSTGRESDB_PORT", Default: "5432", Description: "PostgreSQL port", Required: false},
+			{Key: "DB_POSTGRESDB_DATABASE", Default: "n8n", Description: "PostgreSQL database name", Required: false},
+			{Key: "DB_POSTGRESDB_USER", Default: "n8n", Description: "PostgreSQL username", Required: false},
+			{Key: "DB_POSTGRESDB_PASSWORD", Default: "n8n_password", Description: "PostgreSQL password", Required: false, Secret: true},
 		},
 		HealthCheck: HealthCheck{
 			Test:     []string{"CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"},
 			Interval: "30s",
 			Timeout:  "10s",
 			Retries:  3,
+		},
+		ExtraServices: []ServiceDef{
+			{
+				Name:     "n8n-db",
+				Image:    "postgres:15-alpine",
+				Optional: true,
+				Role:     "database",
+				Environment: map[string]string{
+					"POSTGRES_DB":       "n8n",
+					"POSTGRES_USER":     "n8n",
+					"POSTGRES_PASSWORD": "n8n_password",
+				},
+				Volumes: []Volume{
+					{Name: "n8n-db-data", MountPath: "/var/lib/postgresql/data", Description: "PostgreSQL data"},
+				},
+				HealthCheck: HealthCheck{
+					Test:     []string{"CMD-SHELL", "pg_isready -U n8n"},
+					Interval: "10s",
+					Timeout:  "5s",
+					Retries:  5,
+				},
+			},
 		},
 	}
 }
@@ -102,8 +157,10 @@ func umami() *AppTemplate {
 		},
 		ExtraServices: []ServiceDef{
 			{
-				Name:  "umami-db",
-				Image: "postgres:15-alpine",
+				Name:     "umami-db",
+				Image:    "postgres:15-alpine",
+				Optional: true,
+				Role:     "database",
 				Environment: map[string]string{
 					"POSTGRES_DB":       "umami",
 					"POSTGRES_USER":     "umami",
@@ -150,8 +207,10 @@ func plausible() *AppTemplate {
 		},
 		ExtraServices: []ServiceDef{
 			{
-				Name:  "plausible-db",
-				Image: "postgres:14-alpine",
+				Name:     "plausible-db",
+				Image:    "postgres:14-alpine",
+				Optional: true,
+				Role:     "database",
 				Environment: map[string]string{
 					"POSTGRES_DB":       "plausible",
 					"POSTGRES_USER":     "plausible",
@@ -168,8 +227,10 @@ func plausible() *AppTemplate {
 				},
 			},
 			{
-				Name:  "plausible-events-db",
-				Image: "clickhouse/clickhouse-server:23.3-alpine",
+				Name:     "plausible-events-db",
+				Image:    "clickhouse/clickhouse-server:23.3-alpine",
+				Optional: true,
+				Role:     "events-database",
 				Volumes: []Volume{
 					{Name: "plausible-events-data", MountPath: "/var/lib/clickhouse", Description: "ClickHouse event data"},
 				},
@@ -238,8 +299,10 @@ func plane() *AppTemplate {
 		},
 		ExtraServices: []ServiceDef{
 			{
-				Name:  "plane-db",
-				Image: "postgres:15-alpine",
+				Name:     "plane-db",
+				Image:    "postgres:15-alpine",
+				Optional: true,
+				Role:     "database",
 				Environment: map[string]string{
 					"POSTGRES_DB":       "plane",
 					"POSTGRES_USER":     "plane",
@@ -256,8 +319,10 @@ func plane() *AppTemplate {
 				},
 			},
 			{
-				Name:  "plane-redis",
-				Image: "redis:7-alpine",
+				Name:     "plane-redis",
+				Image:    "redis:7-alpine",
+				Optional: true,
+				Role:     "cache",
 				Volumes: []Volume{
 					{Name: "plane-redis-data", MountPath: "/data", Description: "Redis data"},
 				},

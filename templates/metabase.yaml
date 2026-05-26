@@ -19,13 +19,34 @@ volumes:
 
 env_vars:
   - key: MB_DB_TYPE
-    description: Database type (h2 for embedded SQLite)
+    description: "Database type: h2 (embedded) or postgres"
     default: h2
     required: false
   - key: MB_DB_FILE
-    description: Path to the embedded database file
+    description: Path to the embedded database file (h2 only)
     default: /metabase-data/metabase.db
     required: false
+  - key: MB_DB_HOST
+    description: PostgreSQL host (when MB_DB_TYPE=postgres)
+    default: metabase-db
+    required: false
+  - key: MB_DB_PORT
+    description: PostgreSQL port
+    default: "5432"
+    required: false
+  - key: MB_DB_DBNAME
+    description: PostgreSQL database name
+    default: metabase
+    required: false
+  - key: MB_DB_USER
+    description: PostgreSQL username
+    default: metabase
+    required: false
+  - key: MB_DB_PASS
+    description: PostgreSQL password
+    default: metabase_password
+    required: false
+    secret: true
   - key: JAVA_TIMEZONE
     description: JVM timezone
     default: UTC
@@ -40,3 +61,24 @@ health_check:
   interval: 30s
   timeout: 10s
   retries: 5
+
+# Optional sidecar: skip "metabase-db" to use your own external PostgreSQL.
+# When using the managed DB, set MB_DB_TYPE=postgres in env vars.
+extra_services:
+  - name: metabase-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: metabase
+      POSTGRES_USER: metabase
+      POSTGRES_PASSWORD: metabase_password
+    volumes:
+      - name: metabase-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U metabase"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

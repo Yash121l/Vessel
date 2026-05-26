@@ -9,12 +9,13 @@ import (
 )
 
 var (
-	namePattern     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
-	labelPattern    = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
-	usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{2,31}$`)
-	envKeyPattern   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	imagePattern    = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,254}$`)
-	fileNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+	namePattern      = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	labelPattern     = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+	usernamePattern  = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{2,31}$`)
+	envKeyPattern    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	imagePattern     = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,254}$`)
+	fileNamePattern  = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+	osUsernamePattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 )
 
 func validateDeploymentName(name string) error {
@@ -110,6 +111,49 @@ func validateUpstream(upstream string) error {
 	host, port, err := net.SplitHostPort(upstream)
 	if err != nil || host == "" || port == "" {
 		return fmt.Errorf("upstream must be host:port")
+	}
+	return nil
+}
+
+// validateOSUsername validates a Linux username (lowercase, starts with letter or underscore).
+func validateOSUsername(name string) error {
+	if !osUsernamePattern.MatchString(name) {
+		return fmt.Errorf("OS username must start with a letter or underscore, use only lowercase letters, digits, underscores, or hyphens, and be 1-32 characters")
+	}
+	return nil
+}
+
+// validateShellPath validates a shell path (must be absolute, no shell metacharacters).
+func validateShellPath(shell string) error {
+	if !strings.HasPrefix(shell, "/") {
+		return fmt.Errorf("shell must be an absolute path")
+	}
+	for _, ch := range []string{";", "&", "|", "`", "$", "(", ")", "<", ">", " ", "\t", "\n"} {
+		if strings.Contains(shell, ch) {
+			return fmt.Errorf("shell path contains invalid characters")
+		}
+	}
+	if len(shell) > 256 {
+		return fmt.Errorf("shell path is too long")
+	}
+	return nil
+}
+
+// validateAbsPath validates an absolute filesystem path.
+func validateAbsPath(path string) error {
+	if !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("path must be absolute")
+	}
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("path must not contain ..")
+	}
+	for _, ch := range []string{";", "&", "|", "`", "$", "(", ")", "<", ">", "\t", "\n"} {
+		if strings.Contains(path, ch) {
+			return fmt.Errorf("path contains invalid characters")
+		}
+	}
+	if len(path) > 4096 {
+		return fmt.Errorf("path is too long")
 	}
 	return nil
 }

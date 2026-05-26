@@ -186,7 +186,8 @@ func requireRole(minRole string) gin.HandlerFunc {
 func requirePermission() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead {
-			if strings.HasPrefix(c.Request.URL.Path, "/api/v1/nginx") {
+			if strings.HasPrefix(c.Request.URL.Path, "/api/v1/nginx") ||
+				strings.HasPrefix(c.Request.URL.Path, "/api/v1/system") {
 				requireRole(roleAdmin)(c)
 				return
 			}
@@ -198,6 +199,7 @@ func requirePermission() gin.HandlerFunc {
 			return
 		}
 		if strings.HasPrefix(c.Request.URL.Path, "/api/v1/users") ||
+			strings.HasPrefix(c.Request.URL.Path, "/api/v1/system") ||
 			strings.HasPrefix(c.Request.URL.Path, "/api/v1/settings") ||
 			strings.HasPrefix(c.Request.URL.Path, "/api/v1/nginx") {
 			requireRole(roleAdmin)(c)
