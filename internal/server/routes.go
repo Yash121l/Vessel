@@ -41,6 +41,7 @@ func registerRoutes(
 
 	// Logs (SSE streaming)
 	r.GET("/deployments/:id/logs", streamLogs(engine))
+	r.GET("/deployments/:id/compose", getComposeDetail(engine))
 
 	// Docker discovery
 	r.GET("/docker/containers", listDockerContainers())
@@ -174,6 +175,19 @@ func removeDeployment(engine *deployment.Engine) gin.HandlerFunc {
 			return
 		}
 		c.JSON(200, gin.H{"status": "removed"})
+	}
+}
+
+func getComposeDetail(engine *deployment.Engine) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		defer cancel()
+		detail, err := engine.GetComposeDetail(ctx, c.Param("id"))
+		if err != nil {
+			c.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, detail)
 	}
 }
 

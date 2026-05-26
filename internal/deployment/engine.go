@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -359,6 +360,81 @@ func (e *Engine) SyncImportedStatus(ctx context.Context) error {
 	}
 	return nil
 }
+// ComposeServiceInfo holds runtime info about a single service in a compose stack.
+type ComposeServiceInfo struct {
+	Name    string `json:"name"`
+	Image   string `json:"image"`
+	State   string `json:"state"`
+	Ports   string `json:"ports"`
+	Created string `json:"created"`
+}
+
+// ComposeDetail holds the full detail of a managed deployment's compose stack.
+type ComposeDetail struct {
+	DeploymentID   string               `json:"deployment_id"`
+	DeploymentName string               `json:"deployment_name"`
+	ComposeDir     string               `json:"compose_dir"`
+	ComposeYAML    string               `json:"compose_yaml"`
+	Services       []ComposeServiceInfo `json:"services"`
+}
+
+// GetComposeDetail returns the compose file content and live service states for a deployment.
+func (e *Engine) GetComposeDetail(ctx context.Context, id string) (*ComposeDetail, error) {
+	d, err := e.db.GetDeployment(id)
+	if err != nil || d == nil {
+		return nil, fmt.Errorf("deployment not found: %s", id)
+	}
+	if d.Imported || d.ComposeDir == "" {
+		return nil, fmt.Errorf("no compose file for this deployment")
+	}
+
+	detail := &ComposeDetail{
+		DeploymentID:   d.ID,
+		DeploymentName: d.Name,
+		ComposeDir:     d.ComposeDir,
+	}
+
+	// Read compose YAML
+	yamlPath := filepath.Join(d.ComposeDir, "docker-compose.yml")
+	if data, err := os.ReadFile(yamlPath); err == nil {
+		detail.ComposeYAML = string(data)
+	}
+
+	// Get live service states via docker compose ps
+	cmd := exec.CommandContext(ctx, "docker", "compose", "ps", "--format",
+		"table {{.Name}}\t{{.Image}}\t{{.State}}\t{{.Ports}}\t{{.CreatedAt}}")
+	cmd.Dir = d.ComposeDir
+	out, err := cmd.Output()
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		for i, line := range lines {
+			if i == 0 || line == "" {
+				continue // skip header
+			}
+			parts := strings.Split(line, "\t")
+			svc := ComposeServiceInfo{}
+			if len(parts) > 0 {
+				svc.Name = strings.TrimSpace(parts[0])
+			}
+			if len(parts) > 1 {
+				svc.Image = strings.TrimSpace(parts[1])
+			}
+			if len(parts) > 2 {
+				svc.State = strings.TrimSpace(parts[2])
+			}
+			if len(parts) > 3 {
+				svc.Ports = strings.TrimSpace(parts[3])
+			}
+			if len(parts) > 4 {
+				svc.Created = strings.TrimSpace(parts[4])
+			}
+			detail.Services = append(detail.Services, svc)
+		}
+	}
+
+	return detail, nil
+}
+
 // PeriodicSync refreshes all deployment statuses every interval.
 func (e *Engine) PeriodicSync(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)

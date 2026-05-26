@@ -6,7 +6,6 @@ const uiHTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vessel</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@0.441.0/font/lucide.min.css">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -35,7 +34,10 @@ button{cursor:pointer;font-family:var(--font);font-size:13px;border:none;border-
 input,select,textarea{background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;width:100%;outline:none;transition:border-color .15s}
 input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
-.fg{margin-bottom:16px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.fg{margin-bottom:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:20px}
 .tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em}
 .tag-running,.tag-active{background:var(--green-dim);color:var(--green)}
@@ -46,14 +48,99 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;font-wei
 .dot{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;flex-shrink:0}
 .pulse{animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.editor{font-family:var(--mono);font-size:12px;line-height:1.6;background:#0d1117;border:1px solid var(--border2);border-radius:var(--r);color:#c9d1d9;padding:16px;width:100%;resize:vertical;min-height:300px}
+.editor:focus{border-color:var(--accent);outline:none}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:24px}
+.tab{padding:9px 18px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
+.tab:hover{color:var(--text)}.tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:18px 20px}
+.stat-val{font-size:28px;font-weight:700;letter-spacing:-.5px;line-height:1}
+.stat-lbl{font-size:11px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.stat-sub{font-size:12px;color:var(--muted2);margin-top:4px}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px}
+.bar-track{flex:1;height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width .4s}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;padding:8px 12px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+.tbl td{padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted2)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--surface2);color:var(--text)}
+.hub-result{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;transition:background .12s;border-bottom:1px solid var(--border)}
+.hub-result:hover{background:var(--surface2)}
+.hub-result:last-child{border-bottom:none}
+.img-avatar{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;color:#fff}
 </style>
 </head>
 <body>
 <div id="app" style="display:flex;height:100vh;overflow:hidden"></div>
 <script>
+// ── Inline SVG icons (Lucide subset, no CDN needed) ──────────────────────────
+const ICONS={
+  anchor:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="22"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>',
+  'layout-dashboard':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
+  server:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>',
+  rocket:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
+  settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
+  'file-code':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="m10 13-2 2 2 2"/><path d="m14 17 2-2-2-2"/></svg>',
+  github:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  'refresh-cw':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+  box:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
+  play:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+  'bar-chart-2':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+  'check-circle':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+  'alert-triangle':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  'x-circle':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+  loader:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>',
+  layers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+  'chevron-right':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
+  'chevron-down':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+  'external-link':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
+  trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  'file-text':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
+  cpu:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>',
+  globe:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+};
+function ico(name,size,color){
+  size=size||16;
+  const svg=ICONS[name]||ICONS.box;
+  return svg.replace('<svg ','<svg width="'+size+'" height="'+size+'" style="flex-shrink:0'+(color?';color:'+color:'')+'" ');
+}
+// ── Image avatar: Docker Hub logo with colored-initials fallback ──────────────
+const HUB_COLORS=['#6366f1','#3b82f6','#22c55e','#f59e0b','#ef4444','#a855f7','#06b6d4','#ec4899'];
+function strColor(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))&0xffffffff;return HUB_COLORS[Math.abs(h)%HUB_COLORS.length]}
+function initials(s){const p=s.replace(/:.*/,'').split('/');const n=p[p.length-1];return n.slice(0,2).toUpperCase()}
+// Returns an <img> that falls back to a colored initials div
+function imgAvatar(image,size){
+  size=size||36;
+  if(!image)return'<div class="img-avatar" style="width:'+size+'px;height:'+size+'px;background:var(--surface3);font-size:'+(size*0.38|0)+'px">?</div>';
+  const clean=image.split(':')[0];
+  const parts=clean.split('/');
+  let ns,repo;
+  if(parts.length===1){ns='library';repo=parts[0]}
+  else{ns=parts[0];repo=parts.slice(1).join('/')}
+  const logoUrl='https://hub.docker.com/v2/repositories/'+ns+'/'+repo+'/';
+  const bg=strColor(clean);
+  const init=initials(clean);
+  const id='av-'+clean.replace(/[^a-z0-9]/g,'_')+'_'+size;
+  // We fetch the repo metadata to get logo_url; meanwhile show initials
+  setTimeout(()=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    fetch(logoUrl).then(r=>r.json()).then(d=>{
+      const logo=d.logo_url&&d.logo_url.large?d.logo_url.large:(d.logo_url&&d.logo_url.small?d.logo_url.small:'');
+      if(logo&&el){
+        el.outerHTML='<img src="'+logo+'" width="'+size+'" height="'+size+'" style="border-radius:8px;object-fit:contain;background:var(--surface2)" onerror="this.style.display=\'none\'">';
+      }
+    }).catch(()=>{});
+  },0);
+  return'<div id="'+id+'" class="img-avatar" style="width:'+size+'px;height:'+size+'px;background:'+bg+';font-size:'+(size*0.38|0)+'px;border-radius:8px">'+init+'</div>';
+}
+
 const API='/api/v1';
 let S={
-  page:'containers',nginxTab:'overview',deployTab:'templates',
+  page:'containers',nginxTab:'overview',deployTab:'templates',composeId:null,composeDetail:null,
   deployments:[],apps:[],containers:[],
   nginxStatus:null,nginxSites:[],nginxMainConfig:'',nginxLogs:[],nginxStats:null,
   editingSite:null,editingContent:'',newSiteMode:false,
@@ -87,6 +174,10 @@ async function loadNginx(){
 }
 async function loadNginxConfig(){try{const d=await api('GET','/nginx/config');set({nginxMainConfig:d.content})}catch(e){set({error:e.message})}}
 async function loadNginxLogs(t){try{const d=await api('GET','/nginx/logs/'+t);set({nginxLogs:d.lines||[]})}catch(e){set({error:e.message})}}
+async function loadComposeDetail(id){
+  try{const d=await api('GET','/deployments/'+id+'/compose');set({composeDetail:d,composeId:id})}
+  catch(e){set({error:e.message})}
+}
 async function act(id,a){
   if(a==='stop'&&!confirm('Stop this deployment?'))return;
   if(a==='restart'&&!confirm('Restart this deployment?'))return;
@@ -118,10 +209,12 @@ async function deployCustom(e){
   const volumes=S.customVolumes.filter(v=>v.mount).map(v=>({name:v.name||v.mount.replace(/\//g,'-').replace(/^-/,''),mount_path:v.mount}));
   const image=S.hubSelected?S.hubSelected.slug:f.cimage.value.trim();
   if(!image){set({error:'Image is required'});return}
+  const name=f.cname.value.trim();
+  if(!name){set({error:'Deployment name is required'});return}
   set({deploying:true,error:null});
   try{
-    await api('POST','/docker/deploy',{image,name:f.cname.value,domain:f.cdomain.value,ports,volumes,env});
-    await load();set({page:'containers',deploying:false,hubSelected:null,hubResults:[],hubQuery:''});
+    await api('POST','/docker/deploy',{image,name,domain:f.cdomain.value,ports,volumes,env});
+    await load();set({page:'containers',deploying:false,hubSelected:null,hubResults:[],hubQuery:'',customPorts:[{internal:'',external:'',protocol:'tcp'}],customVolumes:[{name:'',mount:''}]});
   }catch(e){set({deploying:false,error:e.message})}
 }
 let hubTimer=null;
@@ -139,9 +232,8 @@ function hubSearch(q){
   },400);
 }
 function selectHub(item){
-  set({hubSelected:item,hubResults:[]});
-  const el=document.getElementById('cimage');
-  if(el)el.value=item.slug;
+  set({hubSelected:item,hubResults:[],hubQuery:item.slug});
+  const el=document.getElementById('cimage');if(el)el.value=item.slug;
 }
 function ngxAction(action){api('POST','/nginx/'+action).then(loadNginx).catch(e=>set({error:e.message}))}
 async function ngxTest(){try{const d=await api('GET','/nginx/test');alert(d.ok?'Config OK\n\n'+d.output:'Config Error\n\n'+d.output)}catch(e){set({error:e.message})}}
@@ -171,63 +263,22 @@ function openNginxLogs(type){
 }
 function nav(p){
   if(S.logsEs&&p!=='logs'){S.logsEs.close();S.logsEs=null}
-  set({page:p,error:null,editingSite:null,newSiteMode:false});
+  set({page:p,error:null,editingSite:null,newSiteMode:false,composeDetail:null,composeId:null});
   if(p==='containers')load();
   if(p==='deploy')loadApps();
   if(p==='nginx'){loadNginx();loadNginxConfig();}
+  if(p==='compose')load();
 }
-// ── Icon helpers ──────────────────────────────────────────────────────────────
-// dockerIcon returns an <img> tag using Docker Hub logo, with SVG fallback.
-// For official images (no slash) namespace is "library".
-function dockerIcon(image,size){
-  size=size||36;
-  if(!image)return lucideIcon('box',size);
-  const clean=image.split(':')[0];
-  const parts=clean.split('/');
-  let ns,repo;
-  if(parts.length===1){ns='library';repo=parts[0]}
-  else if(parts.length===2){ns=parts[0];repo=parts[1]}
-  else{ns=parts[0];repo=parts[1]}
-  // Docker Hub logo endpoint
-  const src='https://hub.docker.com/api/content/v1/products/images/'+ns+'/'+repo+'/logo';
-  return '<img src="'+src+'" width="'+size+'" height="'+size+'" style="border-radius:6px;object-fit:contain;background:var(--surface2)" '+
-    'onerror="this.replaceWith(lucideIconEl(\'box\','+size+'))">';
-}
-function lucideIconEl(name,size){
-  const el=document.createElement('span');
-  el.innerHTML=lucideIcon(name,size);
-  return el.firstChild;
-}
-function lucideIcon(name,size){
-  size=size||16;
-  return '<i class="icon-'+name+'" style="font-size:'+size+'px;color:var(--muted2)"></i>';
-}
-// appIcon: for template apps use Docker Hub logo based on image field; fallback to lucide
-function appIcon(app,size){
-  if(app&&app.image)return dockerIcon(app.image,size||36);
-  return lucideIcon('box',size||36);
-}
-// containerIcon: use image from container data
-function containerIcon(image,size){
-  if(image)return dockerIcon(image,size||36);
-  return lucideIcon('box',size||36);
-}
-function badge(s){
-  return'<span class="tag tag-'+(s||'stopped')+'"><span class="dot'+(s==='running'||s==='active'?' pulse':'')+'"></span>'+(s||'unknown')+'</span>';
-}
-function fmtBytes(b){
-  if(!b)return'0 B';if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';
-  if(b<1073741824)return(b/1048576).toFixed(1)+' MB';return(b/1073741824).toFixed(2)+' GB';
-}
-function statusColor(code){
-  const c=parseInt(code);
-  if(c>=500)return'var(--red)';if(c>=400)return'var(--yellow)';if(c>=300)return'var(--blue)';return'var(--green)';
-}
+function badge(s){return'<span class="tag tag-'+(s||'stopped')+'"><span class="dot'+(s==='running'||s==='active'?' pulse':'')+'"></span>'+(s||'unknown')+'</span>'}
+function fmtBytes(b){if(!b)return'0 B';if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';if(b<1073741824)return(b/1048576).toFixed(1)+' MB';return(b/1073741824).toFixed(2)+' GB'}
+function fmtPulls(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return n}
+function statusColor(code){const c=parseInt(code);if(c>=500)return'var(--red)';if(c>=400)return'var(--yellow)';if(c>=300)return'var(--blue)';return'var(--green)'}
 function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 // ── Layout ────────────────────────────────────────────────────────────────────
 function render(){
   const navItems=[
     {id:'containers',label:'Containers',icon:'layout-dashboard'},
+    {id:'compose',label:'Compose',icon:'layers'},
     {id:'nginx',label:'Nginx',icon:'server'},
     {id:'deploy',label:'Deploy',icon:'rocket'},
     {id:'settings',label:'Settings',icon:'settings'},
@@ -235,8 +286,7 @@ function render(){
   const sidebar='<nav style="width:var(--sidebar);min-width:var(--sidebar);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh;overflow:hidden">'+
     '<div style="padding:16px;border-bottom:1px solid var(--border)">'+
       '<div style="display:flex;align-items:center;gap:10px">'+
-        '<div style="width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+
-          '<i class="icon-anchor" style="font-size:16px;color:#fff"></i></div>'+
+        '<div style="width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ico('anchor',16,'#fff')+'</div>'+
         '<div><div style="font-weight:700;font-size:14px;letter-spacing:-.3px">Vessel</div>'+
         '<div style="font-size:10px;color:var(--muted)">v0.1.0</div></div>'+
       '</div>'+
@@ -245,16 +295,15 @@ function render(){
     navItems.map(n=>{
       const a=S.page===n.id||(S.page==='logs'&&n.id==='containers');
       return'<a href="#" onclick="nav(\''+n.id+'\');return false" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r);color:'+(a?'var(--text)':'var(--muted)')+';background:'+(a?'var(--surface2)':'transparent')+';font-weight:'+(a?'600':'400')+';margin-bottom:2px;font-size:13px;transition:all .15s;text-decoration:none">'+
-        '<i class="icon-'+n.icon+'" style="font-size:16px;color:'+(a?'var(--accent)':'currentColor')+'"></i>'+
-        n.label+'</a>';
+        ico(n.icon,16,a?'var(--accent)':'currentColor')+n.label+'</a>';
     }).join('')+
     '</div>'+
     '<div style="padding:12px 16px;border-top:1px solid var(--border)">'+
       '<a href="https://github.com/Yash121l/Vessel" target="_blank" style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">'+
-        '<i class="icon-github" style="font-size:13px"></i>GitHub</a>'+
+        ico('github',13)+'GitHub</a>'+
     '</div></nav>';
   const errBanner=S.error?'<div style="background:var(--red-dim);border:1px solid #ef444430;border-radius:var(--r);padding:10px 16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;gap:12px"><span style="color:var(--red);font-size:13px">'+S.error+'</span><button class="btn btn-xs" onclick="set({error:null})">✕</button></div>':'';
-  const pages={containers:pageContainers,nginx:pageNginx,deploy:pageDeploy,logs:pageLogs,settings:pageSettings};
+  const pages={containers:pageContainers,compose:pageCompose,nginx:pageNginx,deploy:pageDeploy,logs:pageLogs,settings:pageSettings};
   const content=(pages[S.page]||pageContainers)();
   document.getElementById('app').innerHTML=
     sidebar+
@@ -277,23 +326,23 @@ function pageContainers(){
     '<div><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Containers</h1>'+
       '<p style="color:var(--muted);font-size:13px;margin-top:4px"><span style="color:var(--green);font-weight:600">'+running+' running</span> · '+S.containers.length+' total</p></div>'+
     '<div style="display:flex;gap:8px">'+
-      '<button class="btn btn-sm" onclick="load()"><i class="icon-refresh-cw" style="font-size:12px"></i> Refresh</button>'+
-      '<button class="btn-primary btn-sm" onclick="nav(\'deploy\')"><i class="icon-plus" style="font-size:12px"></i> Deploy</button>'+
+      '<button class="btn btn-sm" onclick="load()" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
+      '<button class="btn-primary btn-sm" onclick="nav(\'deploy\')" style="display:flex;align-items:center;gap:5px">'+ico('plus',12)+' Deploy</button>'+
     '</div></div>';
-  function section(title,count,cards){
+  function section(title,count,cards,mb){
     return'<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+
       '<span>'+title+'</span><span style="background:var(--surface2);border-radius:10px;padding:1px 7px;font-size:10px">'+count+'</span></div>'+
-      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:10px;margin-bottom:28px">'+cards+'</div>';
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:10px;margin-bottom:'+(mb||28)+'px">'+cards+'</div>';
   }
   if(managed.length)h+=section('Vessel Managed',managed.length,managed.map(cardManaged).join(''));
   if(imported.length)h+=section('Monitored',imported.length,imported.map(cardImported).join(''));
   const uRun=untracked.filter(c=>c.state==='running');
   const uStop=untracked.filter(c=>c.state!=='running');
   if(uRun.length)h+=section('Running — click Monitor to track',uRun.length,uRun.map(cardDiscovered).join(''));
-  if(uStop.length)h+=section('Stopped / Exited',uStop.length,uStop.map(cardDiscovered).join(''));
+  if(uStop.length)h+=section('Stopped / Exited',uStop.length,uStop.map(cardDiscovered).join(''),0);
   if(!managed.length&&!imported.length&&!untracked.length){
     h+='<div style="text-align:center;padding:80px 20px">'+
-      '<i class="icon-rocket" style="font-size:48px;color:var(--muted);display:block;margin-bottom:16px"></i>'+
+      '<div style="display:flex;justify-content:center;margin-bottom:16px;color:var(--muted)">'+ico('rocket',48)+'</div>'+
       '<div style="font-size:18px;font-weight:600;margin-bottom:8px">No containers yet</div>'+
       '<div style="color:var(--muted);margin-bottom:24px">Deploy your first self-hosted app in seconds</div>'+
       '<button class="btn-primary" onclick="nav(\'deploy\')">Deploy an app</button></div>';
@@ -303,28 +352,29 @@ function pageContainers(){
 function cardManaged(d){
   const r=d.status==='running';
   const app=S.apps.find(a=>a.id===d.app_id);
-  const img=app?app.image:d.app_id;
+  const img=app?app.image:(d.image||d.app_id);
   return'<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px 18px">'+
-    '<div style="flex-shrink:0">'+containerIcon(img,36)+'</div>'+
+    imgAvatar(img,36)+
     '<div style="flex:1;min-width:0">'+
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
         '<span style="font-weight:600;font-size:14px">'+d.name+'</span>'+badge(d.status)+'</div>'+
       '<div style="color:var(--muted);font-size:11px;margin-top:3px">'+d.app_id+
         (d.domain?' · <a href="https://'+d.domain+'" target="_blank" style="color:var(--accent2)">'+d.domain+'</a>':'')+
       '</div></div>'+
-    '<div style="display:flex;gap:5px;flex-shrink:0">'+
+    '<div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">'+
       (r?'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'stop\')">Stop</button>':'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'start\')">Start</button>')+
       '<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'restart\')">Restart</button>'+
       '<button class="btn btn-sm" onclick="openLogs(\''+d.id+'\',\'d\',\''+d.name+'\')">Logs</button>'+
       '<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'update\')">Update</button>'+
-      '<button class="btn-danger btn-sm" onclick="remove(\''+d.id+'\',\''+d.name+'\')">✕</button>'+
+      '<button class="btn btn-sm" onclick="nav(\'compose\');setTimeout(()=>loadComposeDetail(\''+d.id+'\'),50)" style="display:flex;align-items:center;gap:4px">'+ico('layers',11)+' Compose</button>'+
+      '<button class="btn-danger btn-sm" onclick="remove(\''+d.id+'\',\''+d.name+'\')">'+ico('trash',11)+'</button>'+
     '</div></div>';
 }
 function cardImported(d){
   const r=d.status==='running';
   const ports=d.ports?d.ports.split(', ').filter(Boolean):[];
   return'<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px 18px">'+
-    '<div style="flex-shrink:0">'+containerIcon(d.image,36)+'</div>'+
+    imgAvatar(d.image,36)+
     '<div style="flex:1;min-width:0">'+
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
         '<span style="font-weight:600;font-size:14px">'+d.name+'</span>'+badge(d.status)+'<span class="tag tag-imported">monitored</span></div>'+
@@ -340,7 +390,7 @@ function cardDiscovered(c){
   const r=c.state==='running';
   const ports=c.ports&&c.ports.length?c.ports.slice(0,2).join(' · '):'';
   return'<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px 18px;'+(r?'':'opacity:.65;')+'">'+
-    '<div style="flex-shrink:0">'+containerIcon(c.image,36)+'</div>'+
+    imgAvatar(c.image,36)+
     '<div style="flex:1;min-width:0">'+
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
         '<span style="font-weight:600;font-size:14px">'+c.name+'</span>'+badge(c.state)+'</div>'+
@@ -352,6 +402,101 @@ function cardDiscovered(c){
          '<button class="btn btn-sm" onclick="actC(\''+c.id+'\',\'start\',\''+c.name+'\')">Start</button>')+
     '</div></div>';
 }
+// ── Compose page ──────────────────────────────────────────────────────────────
+function pageCompose(){
+  const managed=S.deployments.filter(d=>!d.imported&&d.compose_dir);
+  if(S.composeDetail){
+    const cd=S.composeDetail;
+    const svcs=cd.services||[];
+    const images=[...new Set(svcs.map(s=>s.image).filter(Boolean))];
+    const running=svcs.filter(s=>s.state==='running').length;
+    return'<div>'+
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">'+
+        '<button class="btn btn-sm" onclick="set({composeDetail:null,composeId:null})" style="display:flex;align-items:center;gap:5px">'+ico('chevron-right',12)+' Back</button>'+
+        '<div>'+
+          '<h1 style="font-size:20px;font-weight:700;letter-spacing:-.5px">'+cd.deployment_name+'</h1>'+
+          '<div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px">'+cd.compose_dir+'</div>'+
+        '</div>'+
+        '<div style="margin-left:auto;display:flex;gap:8px">'+
+          '<button class="btn btn-sm" onclick="loadComposeDetail(\''+cd.deployment_id+'\')" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
+        '</div>'+
+      '</div>'+
+      '<div class="grid3" style="margin-bottom:24px">'+
+        '<div class="stat-card"><div class="stat-val">'+svcs.length+'</div><div class="stat-lbl">Services</div></div>'+
+        '<div class="stat-card"><div class="stat-val" style="color:var(--green)">'+running+'</div><div class="stat-lbl">Running</div></div>'+
+        '<div class="stat-card"><div class="stat-val">'+images.length+'</div><div class="stat-lbl">Unique Images</div></div>'+
+      '</div>'+
+      '<div class="card" style="margin-bottom:20px">'+
+        '<div style="font-weight:600;font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ico('layers',14,'var(--accent)')+'Services</div>'+
+        (svcs.length?
+          '<table class="tbl"><thead><tr><th>Service</th><th>Image</th><th>State</th><th>Ports</th><th>Created</th></tr></thead><tbody>'+
+          svcs.map(s=>'<tr>'+
+            '<td><div style="display:flex;align-items:center;gap:8px">'+imgAvatar(s.image,24)+'<span style="font-family:var(--mono);font-size:12px">'+escHtml(s.name)+'</span></div></td>'+
+            '<td><span style="font-family:var(--mono);font-size:11px;color:var(--accent2)">'+escHtml(s.image)+'</span></td>'+
+            '<td>'+badge(s.state||'unknown')+'</td>'+
+            '<td><span style="font-family:var(--mono);font-size:11px">'+escHtml(s.ports||'—')+'</span></td>'+
+            '<td style="font-size:11px;color:var(--muted)">'+escHtml(s.created||'—')+'</td>'+
+          '</tr>').join('')+
+          '</tbody></table>':
+          '<div style="color:var(--muted);text-align:center;padding:20px">No service data — deployment may be stopped</div>')+
+      '</div>'+
+      '<div class="card" style="margin-bottom:20px">'+
+        '<div style="font-weight:600;font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ico('box',14,'var(--accent)')+'Images in this stack</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:10px">'+
+        images.map(img=>'<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r);padding:8px 12px">'+
+          imgAvatar(img,28)+'<span style="font-family:var(--mono);font-size:12px">'+escHtml(img)+'</span>'+
+          '<a href="https://hub.docker.com/r/'+escHtml(img.split(':')[0])+'" target="_blank" style="color:var(--muted);display:flex;align-items:center">'+ico('external-link',11)+'</a>'+
+        '</div>').join('')+
+        (images.length?'':'<span style="color:var(--muted);font-size:13px">No images found</span>')+
+        '</div>'+
+      '</div>'+
+      (cd.compose_yaml?
+        '<div class="card">'+
+          '<div style="font-weight:600;font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+ico('file-text',14,'var(--accent)')+'docker-compose.yml</div>'+
+          '<pre style="font-family:var(--mono);font-size:12px;color:#c9d1d9;background:#0d1117;border:1px solid var(--border2);border-radius:var(--r);padding:16px;overflow-x:auto;line-height:1.6;max-height:400px;overflow-y:auto">'+escHtml(cd.compose_yaml)+'</pre>'+
+        '</div>':'')+
+    '</div>';
+  }
+  return'<div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px">'+
+      '<div><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Compose Stacks</h1>'+
+        '<p style="color:var(--muted);font-size:13px;margin-top:4px">All Vessel-managed docker-compose deployments</p></div>'+
+      '<button class="btn btn-sm" onclick="load()" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
+    '</div>'+
+    (managed.length===0?
+      '<div style="text-align:center;padding:80px 20px">'+
+        '<div style="display:flex;justify-content:center;margin-bottom:16px;color:var(--muted)">'+ico('layers',48)+'</div>'+
+        '<div style="font-size:18px;font-weight:600;margin-bottom:8px">No compose stacks yet</div>'+
+        '<div style="color:var(--muted);margin-bottom:24px">Deploy an app to see its compose stack here</div>'+
+        '<button class="btn-primary" onclick="nav(\'deploy\')">Deploy an app</button></div>':
+      '<div style="display:grid;gap:12px">'+
+      managed.map(d=>{
+        const r=d.status==='running';
+        const app=S.apps.find(a=>a.id===d.app_id);
+        const img=app?app.image:(d.image||d.app_id);
+        return'<div class="card" style="padding:18px 20px">'+
+          '<div style="display:flex;align-items:center;gap:14px">'+
+            imgAvatar(img,40)+
+            '<div style="flex:1;min-width:0">'+
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">'+
+                '<span style="font-weight:600;font-size:15px">'+d.name+'</span>'+badge(d.status)+
+                '<span style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+d.app_id+'</span>'+
+              '</div>'+
+              '<div style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+d.compose_dir+'</div>'+
+              (d.domain?'<div style="font-size:11px;margin-top:3px"><a href="https://'+d.domain+'" target="_blank" style="color:var(--accent2)">'+d.domain+'</a></div>':'')+
+            '</div>'+
+            '<div style="display:flex;gap:6px;flex-shrink:0">'+
+              '<button class="btn btn-sm" onclick="loadComposeDetail(\''+d.id+'\')" style="display:flex;align-items:center;gap:5px">'+ico('layers',11)+' View Stack</button>'+
+              '<button class="btn btn-sm" onclick="openLogs(\''+d.id+'\',\'d\',\''+d.name+'\')" style="display:flex;align-items:center;gap:5px">'+ico('file-text',11)+' Logs</button>'+
+              (r?'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'stop\')">Stop</button>':'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'start\')">Start</button>')+
+              '<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'update\')" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',11)+' Update</button>'+
+            '</div>'+
+          '</div>'+
+        '</div>';
+      }).join('')+
+      '</div>')+
+  '</div>';
+}
 // ── Deploy page ───────────────────────────────────────────────────────────────
 function pageDeploy(){
   const tabs='<div class="tabs">'+
@@ -362,37 +507,35 @@ function pageDeploy(){
     '<div style="margin-bottom:24px">'+
       '<h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Deploy</h1>'+
       '<p style="color:var(--muted);font-size:13px;margin-top:4px">Deploy from curated templates or any Docker Hub image</p>'+
-    '</div>'+
-    tabs+
-    (S.deployTab==='templates'?deployTemplates():deployCustom())+
+    '</div>'+tabs+
+    (S.deployTab==='templates'?deployTemplates():deployCustomForm())+
   '</div>';
 }
 function deployTemplates(){
   const apps=S.apps;
+  if(!apps.length)return'<div style="color:var(--muted);text-align:center;padding:40px">Loading templates…</div>';
   return'<form onsubmit="deploy(event)">'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:24px">'+
     apps.map(a=>'<label style="cursor:pointer">'+
       '<input type="radio" name="app_id" value="'+a.id+'" style="display:none" onchange="selectApp(\''+a.id+'\')" required>'+
       '<div id="ac-'+a.id+'" style="background:var(--surface);border:2px solid var(--border);border-radius:var(--r2);padding:18px 12px;text-align:center;transition:all .15s">'+
-        '<div style="width:48px;height:48px;margin:0 auto 10px;border-radius:10px;overflow:hidden;background:var(--surface2);display:flex;align-items:center;justify-content:center">'+
-          appIcon(a,40)+
-        '</div>'+
+        '<div style="display:flex;justify-content:center;margin-bottom:10px">'+imgAvatar(a.image,44)+'</div>'+
         '<div style="font-weight:600;font-size:13px">'+(a.name||a.id)+'</div>'+
         '<div style="font-size:11px;color:var(--muted);margin-top:3px">'+(a.category||'')+'</div>'+
       '</div></label>').join('')+
     '</div>'+
     '<div class="card" style="max-width:700px">'+
       '<div class="grid2">'+
-        '<div class="fg"><label>Deployment Name *</label><input name="dname" placeholder="my-app" pattern="[a-z0-9-]+" required></div>'+
+        '<div class="fg"><label>Deployment Name *</label><input name="dname" placeholder="my-app" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required></div>'+
         '<div class="fg"><label>Custom Domain (optional)</label><input name="domain" placeholder="app.example.com"></div>'+
       '</div>'+
       '<div class="fg"><label>Environment Variables (KEY=VALUE, one per line)</label>'+
-        '<textarea name="env" rows="5" placeholder="SECRET_KEY=abc123" style="font-family:var(--mono);font-size:12px"></textarea></div>'+
+        '<textarea name="env" rows="5" placeholder="SECRET_KEY=abc123&#10;ADMIN_EMAIL=you@example.com" style="font-family:var(--mono);font-size:12px"></textarea></div>'+
       '<div id="env-hints" style="margin-bottom:16px"></div>'+
       '<div style="display:flex;gap:8px;justify-content:flex-end">'+
         '<button type="button" class="btn" onclick="nav(\'containers\')">Cancel</button>'+
-        '<button type="submit" class="btn-primary"'+(S.deploying?' disabled':'')+'>'+
-          (S.deploying?'<i class="icon-loader-2" style="font-size:13px"></i> Deploying…':'<i class="icon-rocket" style="font-size:13px"></i> Deploy')+'</button>'+
+        '<button type="submit" class="btn-primary" style="display:flex;align-items:center;gap:6px"'+(S.deploying?' disabled':'')+'>'+
+          (S.deploying?ico('loader',13)+' Deploying…':ico('rocket',13)+' Deploy')+'</button>'+
       '</div>'+
     '</div></form>';
 }
@@ -409,92 +552,97 @@ function selectApp(id){
       '<code style="color:var(--accent);min-width:200px;font-family:var(--mono);flex-shrink:0">'+e.key+'</code>'+
       '<span style="color:var(--muted)">'+e.description+'</span></div>').join('')+'</div>';
 }
-function deployCustom(){
+function deployCustomForm(){
   const sel=S.hubSelected;
-  const searchBox='<div style="position:relative;margin-bottom:16px">'+
-    '<div style="display:flex;gap:8px;align-items:center">'+
-      '<i class="icon-search" style="font-size:14px;color:var(--muted);position:absolute;left:10px;top:50%;transform:translateY(-50%)"></i>'+
-      '<input id="hubsearch" placeholder="Search Docker Hub (e.g. nginx, postgres, redis…)" style="padding-left:34px" '+
-        'value="'+escHtml(S.hubQuery)+'" oninput="hubSearch(this.value)">'+
-      (S.hubSearching?'<i class="icon-loader-2" style="font-size:14px;color:var(--muted);position:absolute;right:10px;top:50%;transform:translateY(-50%)"></i>':'')+
+  const searchSection='<div style="margin-bottom:20px">'+
+    '<div style="font-weight:600;font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:8px">'+ico('search',14,'var(--accent)')+'Search Docker Hub</div>'+
+    '<div style="position:relative">'+
+      '<input id="hubsearch" placeholder="Search for any image: nginx, postgres, redis, grafana…" '+
+        'value="'+escHtml(S.hubQuery)+'" oninput="hubSearch(this.value)" '+
+        'style="padding-left:36px">'+
+      '<div style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted)">'+ico('search',14)+'</div>'+
+      (S.hubSearching?'<div style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted)">'+ico('loader',14)+'</div>':'')+
     '</div>'+
     (S.hubResults.length?
-      '<div style="position:absolute;z-index:100;width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);margin-top:4px;max-height:280px;overflow-y:auto;box-shadow:0 8px 24px #0006">'+
+      '<div style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);margin-top:4px;max-height:300px;overflow-y:auto;box-shadow:0 8px 24px #0008">'+
         S.hubResults.map(r=>{
-          const logo=r.logo_url&&r.logo_url.large?r.logo_url.large:'';
-          return'<div class="hub-result" onclick="selectHub('+JSON.stringify({slug:r.slug,name:r.name,description:r.short_description,logo:logo}).replace(/"/g,'&quot;')+')">'+
-            (logo?'<img src="'+logo+'" width="32" height="32" style="border-radius:6px;object-fit:contain;background:var(--surface2)" onerror="this.style.display=\'none\'">':
-              '<i class="icon-box" style="font-size:24px;color:var(--muted2)"></i>')+
-            '<div style="min-width:0">'+
+          const logo=r.logo_url&&r.logo_url.large?r.logo_url.large:(r.logo_url&&r.logo_url.small?r.logo_url.small:'');
+          const item=JSON.stringify({slug:r.slug,name:r.name,description:r.short_description||'',logo}).replace(/"/g,'&quot;');
+          return'<div class="hub-result" onclick="selectHub('+item+')">'+
+            (logo?'<img src="'+logo+'" width="36" height="36" style="border-radius:8px;object-fit:contain;background:var(--surface2);flex-shrink:0" onerror="this.replaceWith(document.createRange().createContextualFragment(\''+imgAvatar(r.slug,36).replace(/'/g,"\\'")+'\')); ">':
+              imgAvatar(r.slug,36))+
+            '<div style="flex:1;min-width:0">'+
               '<div style="font-weight:600;font-size:13px;font-family:var(--mono)">'+escHtml(r.slug)+'</div>'+
               '<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.short_description||'')+'</div>'+
             '</div>'+
-            '<div style="margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap">'+
+            '<div style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">'+
               (r.pull_count?fmtPulls(r.pull_count)+' pulls':'')+
+              (r.star_count?' · ★'+r.star_count:'')+
             '</div>'+
           '</div>';
         }).join('')+
-      '</div>':'')+
-  '</div>';
+      '</div>':'')+'</div>';
   const selectedBanner=sel?
     '<div style="display:flex;align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--r);padding:12px 16px;margin-bottom:16px">'+
-      (sel.logo?'<img src="'+sel.logo+'" width="36" height="36" style="border-radius:6px;object-fit:contain;background:var(--surface2)">':
-        '<i class="icon-box" style="font-size:28px;color:var(--accent2)"></i>')+
+      (sel.logo?'<img src="'+sel.logo+'" width="40" height="40" style="border-radius:8px;object-fit:contain;background:var(--surface2);flex-shrink:0">':imgAvatar(sel.slug,40))+
       '<div style="flex:1;min-width:0">'+
-        '<div style="font-weight:600;font-family:var(--mono)">'+escHtml(sel.slug)+'</div>'+
-        '<div style="font-size:11px;color:var(--muted2)">'+escHtml(sel.description||'')+'</div>'+
+        '<div style="font-weight:600;font-family:var(--mono);font-size:14px">'+escHtml(sel.slug)+'</div>'+
+        '<div style="font-size:12px;color:var(--muted2)">'+escHtml(sel.description||'')+'</div>'+
       '</div>'+
+      '<a href="https://hub.docker.com/r/'+escHtml(sel.slug)+'" target="_blank" class="btn btn-xs" style="display:flex;align-items:center;gap:4px">'+ico('external-link',11)+' Hub</a>'+
       '<button class="btn btn-xs" onclick="set({hubSelected:null,hubQuery:\'\'})">Change</button>'+
     '</div>':'';
   return'<form onsubmit="deployCustom(event)">'+
-    '<div class="card" style="max-width:760px">'+
-      '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">'+
-        '<i class="icon-search" style="font-size:14px;color:var(--accent)"></i> Find image on Docker Hub</div>'+
-      searchBox+
-      selectedBanner+
-      '<div class="fg"><label>Image *</label>'+
-        '<input id="cimage" name="cimage" placeholder="nginx:latest or myorg/myapp:1.0" '+(sel?'value="'+escHtml(sel.slug)+'"':'')+' required></div>'+
+    '<div class="card" style="max-width:800px">'+
+      searchSection+selectedBanner+
+      '<div class="fg"><label>Docker Image *</label>'+
+        '<input id="cimage" name="cimage" placeholder="nginx:latest  ·  postgres:16  ·  myorg/myapp:1.0" '+(sel?'value="'+escHtml(sel.slug)+'"':'')+' required></div>'+
       '<div class="grid2">'+
-        '<div class="fg"><label>Deployment Name *</label><input name="cname" placeholder="my-nginx" pattern="[a-z0-9-]+" required></div>'+
+        '<div class="fg"><label>Deployment Name *</label><input name="cname" placeholder="my-nginx" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required></div>'+
         '<div class="fg"><label>Custom Domain (optional)</label><input name="cdomain" placeholder="app.example.com"></div>'+
       '</div>'+
       '<div class="fg">'+
-        '<label style="display:flex;justify-content:space-between">Ports <button type="button" class="btn btn-xs" onclick="S.customPorts.push({internal:\'\',external:\'\',protocol:\'tcp\'});render()">+ Add</button></label>'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+          '<label style="margin:0">Port Mappings</label>'+
+          '<button type="button" class="btn btn-xs" onclick="S.customPorts.push({internal:\'\',external:\'\',protocol:\'tcp\'});render()">+ Add Port</button>'+
+        '</div>'+
         '<div style="display:flex;flex-direction:column;gap:6px">'+
         S.customPorts.map((p,i)=>
           '<div style="display:flex;gap:6px;align-items:center">'+
-            '<input placeholder="Container port" value="'+p.internal+'" oninput="S.customPorts['+i+'].internal=this.value" style="width:140px">'+
-            '<span style="color:var(--muted);flex-shrink:0">→</span>'+
-            '<input placeholder="Host port" value="'+p.external+'" oninput="S.customPorts['+i+'].external=this.value" style="width:140px">'+
+            '<input placeholder="Container port" value="'+escHtml(p.internal)+'" oninput="S.customPorts['+i+'].internal=this.value" style="width:130px">'+
+            '<span style="color:var(--muted);flex-shrink:0;font-size:12px">→ host</span>'+
+            '<input placeholder="Host port" value="'+escHtml(p.external)+'" oninput="S.customPorts['+i+'].external=this.value" style="width:130px">'+
             '<select oninput="S.customPorts['+i+'].protocol=this.value" style="width:80px">'+
               '<option value="tcp"'+(p.protocol==='tcp'?' selected':'')+'>tcp</option>'+
               '<option value="udp"'+(p.protocol==='udp'?' selected':'')+'>udp</option>'+
             '</select>'+
-            (S.customPorts.length>1?'<button type="button" class="btn btn-xs btn-danger" onclick="S.customPorts.splice('+i+',1);render()">✕</button>':'')+
+            (S.customPorts.length>1?'<button type="button" class="btn-danger btn-xs" onclick="S.customPorts.splice('+i+',1);render()">✕</button>':'')+
           '</div>'
         ).join('')+
         '</div></div>'+
       '<div class="fg">'+
-        '<label style="display:flex;justify-content:space-between">Volumes <button type="button" class="btn btn-xs" onclick="S.customVolumes.push({name:\'\',mount:\'\'});render()">+ Add</button></label>'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+          '<label style="margin:0">Volumes</label>'+
+          '<button type="button" class="btn btn-xs" onclick="S.customVolumes.push({name:\'\',mount:\'\'});render()">+ Add Volume</button>'+
+        '</div>'+
         '<div style="display:flex;flex-direction:column;gap:6px">'+
         S.customVolumes.map((v,i)=>
           '<div style="display:flex;gap:6px;align-items:center">'+
-            '<input placeholder="Volume name (optional)" value="'+v.name+'" oninput="S.customVolumes['+i+'].name=this.value" style="width:180px">'+
-            '<input placeholder="Mount path e.g. /data" value="'+v.mount+'" oninput="S.customVolumes['+i+'].mount=this.value" style="flex:1">'+
-            (S.customVolumes.length>1?'<button type="button" class="btn btn-xs btn-danger" onclick="S.customVolumes.splice('+i+',1);render()">✕</button>':'')+
+            '<input placeholder="Volume name (auto if blank)" value="'+escHtml(v.name)+'" oninput="S.customVolumes['+i+'].name=this.value" style="width:200px">'+
+            '<input placeholder="Mount path e.g. /data" value="'+escHtml(v.mount)+'" oninput="S.customVolumes['+i+'].mount=this.value" style="flex:1">'+
+            (S.customVolumes.length>1?'<button type="button" class="btn-danger btn-xs" onclick="S.customVolumes.splice('+i+',1);render()">✕</button>':'')+
           '</div>'
         ).join('')+
         '</div></div>'+
       '<div class="fg"><label>Environment Variables (KEY=VALUE, one per line)</label>'+
-        '<textarea name="cenv" rows="4" placeholder="MY_VAR=value" style="font-family:var(--mono);font-size:12px"></textarea></div>'+
+        '<textarea name="cenv" rows="5" placeholder="MY_VAR=value&#10;ANOTHER=123" style="font-family:var(--mono);font-size:12px"></textarea></div>'+
       '<div style="display:flex;gap:8px;justify-content:flex-end">'+
         '<button type="button" class="btn" onclick="nav(\'containers\')">Cancel</button>'+
-        '<button type="submit" class="btn-primary"'+(S.deploying?' disabled':'')+'>'+
-          (S.deploying?'<i class="icon-loader-2" style="font-size:13px"></i> Deploying…':'<i class="icon-rocket" style="font-size:13px"></i> Deploy')+'</button>'+
+        '<button type="submit" class="btn-primary" style="display:flex;align-items:center;gap:6px"'+(S.deploying?' disabled':'')+'>'+
+          (S.deploying?ico('loader',13)+' Deploying…':ico('rocket',13)+' Deploy')+'</button>'+
       '</div>'+
     '</div></form>';
 }
-function fmtPulls(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return n}
 // ── Nginx page ────────────────────────────────────────────────────────────────
 function pageNginx(){
   const st=S.nginxStatus;const stats=S.nginxStats;
@@ -507,7 +655,7 @@ function pageNginx(){
       '<button class="btn btn-sm" onclick="ngxAction(\'reload\')">Reload</button>'+
       '<button class="btn btn-sm" onclick="ngxAction(\'restart\')">Restart</button>'+
       (st&&st.running?'<button class="btn-danger btn-sm" onclick="ngxAction(\'stop\')">Stop</button>':'<button class="btn-success btn-sm" onclick="ngxAction(\'start\')">Start</button>')+
-      '<button class="btn btn-sm" onclick="loadNginx()"><i class="icon-refresh-cw" style="font-size:12px"></i></button>'+
+      '<button class="btn btn-sm" onclick="loadNginx()" style="display:flex;align-items:center">'+ico('refresh-cw',12)+'</button>'+
     '</div></div>';
   const tabs=['overview','sites','config','logs'].map(t=>
     '<span class="tab'+(S.nginxTab===t?' on':'')+'" onclick="set({nginxTab:\''+t+'\'})">'+
@@ -524,8 +672,8 @@ function statCard(val,label,sub,color,iconName){
     '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
       '<div><div class="stat-val" style="color:'+color+'">'+val+'</div>'+
         '<div class="stat-lbl">'+label+'</div><div class="stat-sub">'+sub+'</div></div>'+
-      '<div style="width:36px;height:36px;background:'+color+'18;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+
-        '<i class="icon-'+iconName+'" style="font-size:18px;color:'+color+'"></i>'+
+      '<div style="width:36px;height:36px;background:'+color+'18;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:'+color+'">'+
+        ico(iconName,18,color)+
       '</div>'+
     '</div></div>';
 }
@@ -668,8 +816,8 @@ function nginxConfigTab(){
 function nginxLogsTab(){
   return'<div>'+
     '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+
-      '<button class="btn btn-sm" onclick="openNginxLogs(\'access\')"><i class="icon-play" style="font-size:11px"></i> Stream Access</button>'+
-      '<button class="btn btn-sm" onclick="openNginxLogs(\'error\')"><i class="icon-play" style="font-size:11px"></i> Stream Error</button>'+
+      '<button class="btn btn-sm" onclick="openNginxLogs(\'access\')" style="display:flex;align-items:center;gap:5px">'+ico('play',11)+' Stream Access</button>'+
+      '<button class="btn btn-sm" onclick="openNginxLogs(\'error\')" style="display:flex;align-items:center;gap:5px">'+ico('play',11)+' Stream Error</button>'+
       '<button class="btn btn-sm" onclick="loadNginxLogs(\'access\')">Load Access (200 lines)</button>'+
       '<button class="btn btn-sm" onclick="loadNginxLogs(\'error\')">Load Error (200 lines)</button>'+
     '</div>'+
@@ -706,13 +854,12 @@ function pageSettings(){
       row('Version','0.1.0')+row('Data directory','/var/lib/vessel')+
       row('Config file','/etc/vessel/config.yaml')+row('UI port','4800')+
       '<div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);display:flex;gap:10px">'+
-        '<a href="https://github.com/Yash121l/Vessel" target="_blank" class="btn btn-sm"><i class="icon-github" style="font-size:13px"></i> View on GitHub</a>'+
+        '<a href="https://github.com/Yash121l/Vessel" target="_blank" class="btn btn-sm" style="display:flex;align-items:center;gap:6px">'+ico('github',13)+' View on GitHub</a>'+
       '</div>'+
     '</div></div>';
 }
 // ── Boot ──────────────────────────────────────────────────────────────────────
-set({});
-load();
+set({});load();
 </script>
 </body>
 </html>`
