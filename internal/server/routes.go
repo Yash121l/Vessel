@@ -1,12 +1,14 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -91,6 +93,9 @@ func registerRoutes(
 	// Settings
 	r.GET("/settings", getSettings(db))
 	r.PUT("/settings", updateSettings(db))
+
+	// Self-update
+	r.POST("/system/update", selfUpdate())
 
 	// Nginx management
 	ngx := nginx.NewManager()
@@ -779,7 +784,70 @@ func removeComposeStack() gin.HandlerFunc {
 	}
 }
 
-// createComposeDeployment deploys a user-defined multi-service compose stack.
+// selfUpdate streams the output of `vessel update` as SSE so the UI can show
+// live progress. The process runs as a child of the server; systemctl restart
+// will kill the server and bring it back up with the new binary.
+func selfUpdate() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+
+		exe, err := os.Executable()
+		if err != nil {
+			exe = "/usr/local/bin/vessel"
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, exe, "update")
+		stdout, _ := cmd.StdoutPipe()
+		stderr, _ := cmd.StderrPipe()
+
+		if err := cmd.Start(); err != nil {
+			c.Stream(func(w io.Writer) bool {
+				fmt.Fprintf(w, "data: error: %s\n\n", err.Error())
+				return false
+			})
+			return
+		}
+
+		lines := make(chan string, 64)
+		scan := func(r io.Reader) {
+			buf := bufio.NewScanner(r)
+			for buf.Scan() {
+				lines <- buf.Text()
+			}
+		}
+		go scan(stdout)
+		go scan(stderr)
+
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait(); close(lines) }()
+
+		c.Stream(func(w io.Writer) bool {
+			select {
+			case line, ok := <-lines:
+				if !ok {
+					return false
+				}
+				fmt.Fprintf(w, "data: %s\n\n", line)
+				return true
+			case err := <-done:
+				if err != nil {
+					fmt.Fprintf(w, "data: ERROR: %s\n\n", err.Error())
+				} else {
+					fmt.Fprintf(w, "data: __DONE__\n\n")
+				}
+				return false
+			case <-ctx.Done():
+				return false
+			}
+		})
+	}
+}
 // The caller provides a primary service plus zero or more sidecar services,
 // and Vessel generates, writes, and starts the compose file.
 func createComposeDeployment(engine *deployment.Engine, reg *registry.Registry) gin.HandlerFunc {

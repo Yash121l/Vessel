@@ -147,6 +147,7 @@ let S={
   editingSite:null,editingContent:'',newSiteMode:false,
   logs:'',logsTarget:null,logsEs:null,
   deploying:false,error:null,
+  updating:false,updateLog:null,
   hubQuery:'',hubResults:[],hubSearching:false,hubSelected:null,
   customPorts:[{internal:'',external:'',protocol:'tcp'}],
   customVolumes:[{name:'',mount:''}],
@@ -1181,8 +1182,22 @@ function pageLogs(){
 // ── Settings page ─────────────────────────────────────────────────────────────
 function pageSettings(){
   function row(l,v){return'<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted);font-size:13px">'+l+'</span><code style="font-family:var(--mono);font-size:12px;color:var(--accent2)">'+v+'</code></div>'}
+  const upd=S.updateLog!==undefined;
+  const updateCard='<div class="card" style="max-width:680px;margin-bottom:24px">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'+
+      '<div>'+
+        '<div style="font-weight:700;font-size:15px">Update Vessel</div>'+
+        '<div style="font-size:12px;color:var(--muted);margin-top:3px">Pulls the latest release binary from GitHub and restarts the service</div>'+
+      '</div>'+
+      '<button class="btn-primary btn-sm" onclick="startUpdate()" style="display:flex;align-items:center;gap:6px"'+(S.updating?' disabled':'')+'>'+
+        (S.updating?ico('loader',13)+' Updating…':ico('refresh-cw',13)+' Update Now')+'</button>'+
+    '</div>'+
+    (S.updateLog!==null&&S.updateLog!==undefined?
+      '<pre id="update-log" style="font-family:var(--mono);font-size:12px;background:#0d1117;border:1px solid var(--border2);border-radius:var(--r);padding:14px;max-height:260px;overflow-y:auto;color:#a8b4c8;line-height:1.6;white-space:pre-wrap;word-break:break-all">'+escHtml(S.updateLog)+'</pre>':'')+
+  '</div>';
   return'<div>'+
     '<div style="margin-bottom:24px"><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Settings</h1></div>'+
+    updateCard+
     '<div class="card" style="max-width:680px;margin-bottom:24px">'+
       row('Signed in as',escHtml((S.currentUser&&S.currentUser.username)||''))+
       row('Role',escHtml((S.currentUser&&S.currentUser.role)||''))+
@@ -1194,6 +1209,31 @@ function pageSettings(){
     '</div>'+
     (canAdmin()?usersPanel():'')+
   '</div>';
+}
+async function startUpdate(){
+  if(S.updating)return;
+  if(!confirm('Update Vessel to the latest release?\n\nThe service will restart automatically. You may need to refresh the page after ~10 seconds.'))return;
+  set({updating:true,updateLog:'Connecting…\n'});
+  const es=new EventSource(API+'/system/update');
+  es.onmessage=e=>{
+    if(e.data==='__DONE__'){
+      es.close();
+      set({updating:false,updateLog:(S.updateLog||'')+'Done. Refreshing in 8s…\n'});
+      setTimeout(()=>location.reload(),8000);
+      return;
+    }
+    S.updateLog=(S.updateLog||'')+e.data+'\n';
+    const el=document.getElementById('update-log');
+    if(el){el.textContent=S.updateLog;el.scrollTop=el.scrollHeight;}
+  };
+  es.onerror=()=>{
+    es.close();
+    // If the server restarted, the SSE connection will drop — that's expected
+    if(S.updating){
+      set({updating:false,updateLog:(S.updateLog||'')+'Connection closed (service may be restarting).\nRefreshing in 8s…\n'});
+      setTimeout(()=>location.reload(),8000);
+    }
+  };
 }
 function usersPanel(){
   const roles=['viewer','operator','admin'].concat(S.currentUser&&S.currentUser.role==='owner'?['owner']:[]);
