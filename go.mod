@@ -1,4 +1,4 @@
-module github.com/vessel-app/vessel
+module github.com/Yash121l/Vessel
 
 go 1.22
 

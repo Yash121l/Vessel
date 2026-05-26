@@ -9,7 +9,7 @@ Deploy and manage popular self-hosted applications with minimal DevOps knowledge
 ## Install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/vessel-app/vessel/main/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/Yash121l/Vessel/main/install.sh | sudo bash
 ```
 
 Then open `http://your-server-ip:4800` in your browser.
@@ -157,9 +157,7 @@ make release
 make help
 ```
 
-> **Note:** The project uses `GOFLAGS="-mod=mod"` due to the CGO dependency (`go-sqlite3`). This is handled automatically by `make`.
-
----
+> **Note:** The project uses `GOFLAGS="-mod=mod"` due to the CGO dependency (`go-sqlite3`). This is handled automatically by `make`.---
 
 ## Data layout
 

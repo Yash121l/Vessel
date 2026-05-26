@@ -28,7 +28,7 @@ jobs:
       - name: Build release binaries
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          LDFLAGS="-s -w -X github.com/vessel-app/vessel/internal/cli.Version=${VERSION}"
+          LDFLAGS="-s -w -X github.com/Yash121l/Vessel/internal/cli.Version=${VERSION}"
           mkdir -p dist
 
           GOFLAGS="-mod=mod" GOOS=linux GOARCH=amd64 \
@@ -56,7 +56,7 @@ jobs:
             ## Install
 
             ```bash
-            curl -sSL https://raw.githubusercontent.com/vessel-app/vessel/${{ github.ref_name }}/install.sh | sudo bash
+            curl -sSL https://raw.githubusercontent.com/Yash121l/Vessel/${{ github.ref_name }}/install.sh | sudo bash
             ```
 
             ## Binaries

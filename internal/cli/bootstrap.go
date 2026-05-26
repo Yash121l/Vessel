@@ -3,8 +3,8 @@ package cli
 import (
 	"fmt"
 
-	"github.com/vessel-app/vessel/internal/config"
-	"github.com/vessel-app/vessel/internal/system"
+	"github.com/Yash121l/Vessel/internal/config"
+	"github.com/Yash121l/Vessel/internal/system"
 )
 
 func runBootstrap(cfg *config.Config) error {

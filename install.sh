@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Vessel Installer
-# Usage: curl -sSL https://raw.githubusercontent.com/vessel-app/vessel/main/install.sh | sudo bash
+# Usage: curl -sSL https://raw.githubusercontent.com/Yash121l/Vessel/main/install.sh | sudo bash
 set -euo pipefail
 
 VESSEL_VERSION="${VESSEL_VERSION:-0.1.0}"
@@ -8,7 +8,7 @@ VESSEL_PORT="${VESSEL_PORT:-4800}"
 VESSEL_DATA_DIR="${VESSEL_DATA_DIR:-/var/lib/vessel}"
 VESSEL_CONFIG_DIR="/etc/vessel"
 VESSEL_BIN="/usr/local/bin/vessel"
-VESSEL_REPO="vessel-app/vessel"
+VESSEL_REPO="Yash121l/Vessel"
 VESSEL_BRANCH="${VESSEL_BRANCH:-main}"
 
 # ── Colors ──────────────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ build_from_source() {
   info "Compiling..."
   cd "$TMP_SRC"
   GOFLAGS="-mod=mod" go build \
-    -ldflags="-s -w -X github.com/vessel-app/vessel/internal/cli.Version=${VESSEL_VERSION}" \
+    -ldflags="-s -w -X github.com/Yash121l/Vessel/internal/cli.Version=${VESSEL_VERSION}" \
     -o "$VESSEL_BIN" . 2>&1
   cd /
   rm -rf "$TMP_SRC"

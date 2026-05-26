@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/vessel-app/vessel/internal/config"
-	"github.com/vessel-app/vessel/internal/server"
+	"github.com/Yash121l/Vessel/internal/config"
+	"github.com/Yash121l/Vessel/internal/server"
 )
 
 var rootCmd = &cobra.Command{

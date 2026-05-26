@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/vessel-app/vessel/internal/config"
-	"github.com/vessel-app/vessel/internal/deployment"
-	"github.com/vessel-app/vessel/internal/proxy"
-	"github.com/vessel-app/vessel/internal/registry"
-	"github.com/vessel-app/vessel/internal/store"
+	"github.com/Yash121l/Vessel/internal/config"
+	"github.com/Yash121l/Vessel/internal/deployment"
+	"github.com/Yash121l/Vessel/internal/proxy"
+	"github.com/Yash121l/Vessel/internal/registry"
+	"github.com/Yash121l/Vessel/internal/store"
 )
 
 // Start initializes and runs the Vessel HTTP server.

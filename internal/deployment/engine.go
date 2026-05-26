@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/vessel-app/vessel/internal/config"
-	"github.com/vessel-app/vessel/internal/proxy"
-	"github.com/vessel-app/vessel/internal/registry"
-	"github.com/vessel-app/vessel/internal/store"
+	"github.com/Yash121l/Vessel/internal/config"
+	"github.com/Yash121l/Vessel/internal/proxy"
+	"github.com/Yash121l/Vessel/internal/registry"
+	"github.com/Yash121l/Vessel/internal/store"
 )
 
 // Engine manages the lifecycle of deployments.

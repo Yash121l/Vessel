@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/vessel-app/vessel/internal/cli"
+	"github.com/Yash121l/Vessel/internal/cli"
 )
 
 func main() {

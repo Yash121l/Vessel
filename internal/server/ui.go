@@ -372,7 +372,7 @@ function settingsPage() {
       '</div>' +
       '<div style="margin-bottom:20px">' +
         '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Documentation</div>' +
-        '<a href="https://github.com/vessel-app/vessel" target="_blank">github.com/vessel-app/vessel</a>' +
+        '<a href="https://github.com/Yash121l/Vessel" target="_blank">github.com/Yash121l/Vessel</a>' +
       '</div>' +
     '</div>' +
   '</div>';

@@ -1,6 +1,6 @@
 [Unit]
 Description=Vessel - Self-hosted App Deployment Manager
-Documentation=https://github.com/vessel-app/vessel
+Documentation=https://github.com/Yash121l/Vessel
 After=network.target docker.service
 Requires=docker.service
 

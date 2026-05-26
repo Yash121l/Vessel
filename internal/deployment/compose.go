@@ -8,8 +8,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/vessel-app/vessel/internal/registry"
-	"github.com/vessel-app/vessel/internal/store"
+	"github.com/Yash121l/Vessel/internal/registry"
+	"github.com/Yash121l/Vessel/internal/store"
 )
 
 // ComposeFile represents a Docker Compose file structure.

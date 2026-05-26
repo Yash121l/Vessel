@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/vessel-app/vessel/internal/config"
-	"github.com/vessel-app/vessel/internal/store"
+	"github.com/Yash121l/Vessel/internal/config"
+	"github.com/Yash121l/Vessel/internal/store"
 )
 
 // Bootstrapper handles system-level setup.
