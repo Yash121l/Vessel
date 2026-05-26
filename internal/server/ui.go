@@ -149,7 +149,13 @@ let S={
   deploying:false,error:null,
   hubQuery:'',hubResults:[],hubSearching:false,hubSelected:null,
   customPorts:[{internal:'',external:'',protocol:'tcp'}],
-  customVolumes:[{name:'',mount:''}]
+  customVolumes:[{name:'',mount:''}],
+  // Compose stack builder state
+  csName:'',csDomain:'',csPrimaryImage:'',csPrimaryName:'',
+  csPrimaryPorts:[{internal:'',external:'',protocol:'tcp'}],
+  csPrimaryVolumes:[{name:'',mount:''}],
+  csPrimaryEnv:'',
+  csSidecars:[],  // [{name,image,env,volumes:[{name,mount}],healthTest}]
 };
 function set(p){Object.assign(S,p);render()}
 async function api(method,path,body){
@@ -212,6 +218,14 @@ async function loadNginxLogs(t){try{const d=await api('GET','/nginx/logs/'+t);se
 async function loadComposeDetail(id){
   try{const d=await api('GET','/deployments/'+id+'/compose');set({composeDetail:d,composeId:id})}
   catch(e){set({error:e.message})}
+}
+function copyYaml(){
+  const el=document.getElementById('compose-yaml-pre');
+  if(!el)return;
+  navigator.clipboard.writeText(el.textContent).then(()=>{
+    const btn=event.target.closest('button');
+    if(btn){const orig=btn.innerHTML;btn.innerHTML=ico('check-circle',11)+' Copied';setTimeout(()=>{btn.innerHTML=orig},1500);}
+  }).catch(()=>{});
 }
 async function removeExternalStack(name){
   if(!confirm('Remove stack "'+name+'"?\n\nThis will run docker compose down and stop/remove all its containers. This cannot be undone.'))return;
@@ -586,8 +600,11 @@ function pageCompose(){
       '</div>'+
       (cd.compose_yaml?
         '<div class="card">'+
-          '<div style="font-weight:600;font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+ico('file-text',14,'var(--accent)')+'docker-compose.yml</div>'+
-          '<pre style="font-family:var(--mono);font-size:12px;color:#c9d1d9;background:#0d1117;border:1px solid var(--border2);border-radius:var(--r);padding:16px;overflow-x:auto;line-height:1.6;max-height:400px;overflow-y:auto">'+escHtml(cd.compose_yaml)+'</pre>'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+            '<div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px">'+ico('file-text',14,'var(--accent)')+'docker-compose.yml</div>'+
+            '<button class="btn btn-xs" onclick="copyYaml()" style="display:flex;align-items:center;gap:4px">'+ico('file-code',11)+' Copy</button>'+
+          '</div>'+
+          '<pre id="compose-yaml-pre" style="font-family:var(--mono);font-size:12px;color:#c9d1d9;background:#0d1117;border:1px solid var(--border2);border-radius:var(--r);padding:16px;overflow-x:auto;line-height:1.6;max-height:500px;overflow-y:auto">'+escHtml(cd.compose_yaml)+'</pre>'+
         '</div>':'')+
     '</div>';
   }
@@ -609,18 +626,23 @@ function pageCompose(){
         const r=d.status==='running';
         const app=S.apps.find(a=>a.id===d.app_id);
         const img=app?app.image:(d.image||d.app_id);
-        return'<div class="card" style="padding:18px 20px">'+
+        const svcCount=app&&app.extra_services?app.extra_services.length+1:1;
+        return'<div class="card" style="padding:18px 20px;cursor:pointer;transition:border-color .15s" '+
+          'onmouseenter="this.style.borderColor=\'var(--accent)\'" '+
+          'onmouseleave="this.style.borderColor=\'\'" '+
+          'onclick="loadComposeDetail(\''+d.id+'\')" >'+
           '<div style="display:flex;align-items:center;gap:14px">'+
             imgAvatar(img,40)+
             '<div style="flex:1;min-width:0">'+
               '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">'+
                 '<span style="font-weight:600;font-size:15px">'+d.name+'</span>'+badge(d.status)+
                 '<span class="tag tag-imported">vessel</span>'+
+                '<span style="font-size:11px;color:var(--muted)">'+svcCount+' service'+(svcCount!==1?'s':'')+'</span>'+
               '</div>'+
               '<div style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+d.compose_dir+'</div>'+
-              (d.domain?'<div style="font-size:11px;margin-top:3px"><a href="https://'+d.domain+'" target="_blank" style="color:var(--accent2)">'+d.domain+'</a></div>':'')+
+              (d.domain?'<div style="font-size:11px;margin-top:3px"><a href="https://'+d.domain+'" target="_blank" style="color:var(--accent2)" onclick="event.stopPropagation()">'+d.domain+'</a></div>':'')+
             '</div>'+
-            '<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">'+
+            '<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end" onclick="event.stopPropagation()">'+
               '<button class="btn btn-sm" onclick="loadComposeDetail(\''+d.id+'\')" style="display:flex;align-items:center;gap:5px">'+ico('layers',11)+' View Stack</button>'+
               '<button class="btn btn-sm" onclick="openLogs(\''+d.id+'\',\'d\',\''+d.name+'\')" style="display:flex;align-items:center;gap:5px">'+ico('file-text',11)+' Logs</button>'+
               (r?'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'stop\')">Stop</button>':'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'start\')">Start</button>')+
@@ -658,13 +680,14 @@ function pageDeploy(){
   const tabs='<div class="tabs">'+
     '<span class="tab'+(S.deployTab==='templates'?' on':'')+'" onclick="set({deployTab:\'templates\'})">Templates</span>'+
     '<span class="tab'+(S.deployTab==='custom'?' on':'')+'" onclick="set({deployTab:\'custom\'})">Custom Container</span>'+
+    '<span class="tab'+(S.deployTab==='compose'?' on':'')+'" onclick="set({deployTab:\'compose\'})">Compose Stack</span>'+
   '</div>';
   return'<div>'+
     '<div style="margin-bottom:24px">'+
       '<h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Deploy</h1>'+
-      '<p style="color:var(--muted);font-size:13px;margin-top:4px">Deploy from curated templates or any Docker Hub image</p>'+
+      '<p style="color:var(--muted);font-size:13px;margin-top:4px">Deploy from curated templates, any Docker Hub image, or define a multi-container compose stack</p>'+
     '</div>'+tabs+
-    (S.deployTab==='templates'?deployTemplates():deployCustomForm())+
+    (S.deployTab==='templates'?deployTemplates():S.deployTab==='custom'?deployCustomForm():deployComposeForm())+
   '</div>';
 }
 function deployTemplates(){
@@ -819,6 +842,139 @@ function deployCustomForm(){
           (S.deploying?ico('loader',13)+' Deploying…':ico('rocket',13)+' Deploy')+'</button>'+
       '</div>'+
     '</div></form>';
+}
+// ── Compose Stack builder ─────────────────────────────────────────────────────
+function deployComposeForm(){
+  const sc=S.csSidecars;
+  function sidecarCard(s,i){
+    return'<div class="card" style="margin-bottom:12px;border-color:var(--border2)">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+        '<div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px">'+ico('box',13,'var(--accent2)')+'Sidecar '+(i+1)+'</div>'+
+        '<button type="button" class="btn-danger btn-xs" onclick="S.csSidecars.splice('+i+',1);render()">Remove</button>'+
+      '</div>'+
+      '<div class="grid2">'+
+        '<div class="fg"><label>Service Name *</label><input placeholder="postgres, redis, worker" value="'+escHtml(s.name)+'" oninput="S.csSidecars['+i+'].name=this.value" required></div>'+
+        '<div class="fg"><label>Image *</label><input placeholder="postgres:16, redis:7-alpine" value="'+escHtml(s.image)+'" oninput="S.csSidecars['+i+'].image=this.value" required></div>'+
+      '</div>'+
+      '<div class="fg"><label>Environment Variables (KEY=VALUE, one per line)</label>'+
+        '<textarea rows="3" placeholder="POSTGRES_DB=myapp&#10;POSTGRES_USER=app&#10;POSTGRES_PASSWORD=secret" style="font-family:var(--mono);font-size:12px" oninput="S.csSidecars['+i+'].env=this.value">'+escHtml(s.env||'')+'</textarea></div>'+
+      '<div class="fg">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+          '<label style="margin:0">Volumes</label>'+
+          '<button type="button" class="btn btn-xs" onclick="S.csSidecars['+i+'].volumes.push({name:\'\',mount:\'\'});render()">+ Add</button>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:5px">'+
+        (s.volumes||[]).map((v,vi)=>
+          '<div style="display:flex;gap:6px;align-items:center">'+
+            '<input placeholder="vol name (auto)" value="'+escHtml(v.name)+'" oninput="S.csSidecars['+i+'].volumes['+vi+'].name=this.value" style="width:180px">'+
+            '<input placeholder="/data" value="'+escHtml(v.mount)+'" oninput="S.csSidecars['+i+'].volumes['+vi+'].mount=this.value" style="flex:1">'+
+            (s.volumes.length>1?'<button type="button" class="btn-danger btn-xs" onclick="S.csSidecars['+i+'].volumes.splice('+vi+',1);render()">x</button>':'')+
+          '</div>'
+        ).join('')+
+        '</div></div>'+
+      '<div class="fg"><label>Health Check (optional, e.g. CMD pg_isready -U app)</label>'+
+        '<input placeholder="CMD pg_isready -U app" value="'+escHtml(s.healthTest||'')+'" oninput="S.csSidecars['+i+'].healthTest=this.value"></div>'+
+    '</div>';
+  }
+  return'<form onsubmit="deployComposeStack(event)">'+
+    '<div class="card" style="max-width:860px;margin-bottom:16px">'+
+      '<div style="font-weight:700;font-size:14px;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ico('layers',15,'var(--accent)')+'Stack Settings</div>'+
+      '<div class="grid2">'+
+        '<div class="fg"><label>Stack Name *</label><input name="csname" placeholder="my-stack" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" value="'+escHtml(S.csName)+'" oninput="S.csName=this.value" required></div>'+
+        '<div class="fg"><label>Custom Domain (optional)</label><input name="csdomain" placeholder="app.example.com" value="'+escHtml(S.csDomain)+'" oninput="S.csDomain=this.value"></div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="card" style="max-width:860px;margin-bottom:16px">'+
+      '<div style="font-weight:700;font-size:14px;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ico('rocket',15,'var(--accent)')+'Primary Service</div>'+
+      '<div class="grid2">'+
+        '<div class="fg"><label>Image *</label><input name="cspimage" placeholder="nginx:latest, myorg/myapp:1.0" value="'+escHtml(S.csPrimaryImage)+'" oninput="S.csPrimaryImage=this.value" required></div>'+
+        '<div class="fg"><label>Service Name (defaults to stack name)</label><input name="cspname" placeholder="app" value="'+escHtml(S.csPrimaryName)+'" oninput="S.csPrimaryName=this.value"></div>'+
+      '</div>'+
+      '<div class="fg">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+          '<label style="margin:0">Port Mappings</label>'+
+          '<button type="button" class="btn btn-xs" onclick="S.csPrimaryPorts.push({internal:\'\',external:\'\',protocol:\'tcp\'});render()">+ Add Port</button>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px">'+
+        S.csPrimaryPorts.map((p,i)=>
+          '<div style="display:flex;gap:6px;align-items:center">'+
+            '<input placeholder="Container port" value="'+escHtml(p.internal)+'" oninput="S.csPrimaryPorts['+i+'].internal=this.value" style="width:130px">'+
+            '<span style="color:var(--muted);flex-shrink:0;font-size:12px">to host</span>'+
+            '<input placeholder="Host port" value="'+escHtml(p.external)+'" oninput="S.csPrimaryPorts['+i+'].external=this.value" style="width:130px">'+
+            '<select oninput="S.csPrimaryPorts['+i+'].protocol=this.value" style="width:80px">'+
+              '<option value="tcp"'+(p.protocol==='tcp'?' selected':'')+'>tcp</option>'+
+              '<option value="udp"'+(p.protocol==='udp'?' selected':'')+'>udp</option>'+
+            '</select>'+
+            (S.csPrimaryPorts.length>1?'<button type="button" class="btn-danger btn-xs" onclick="S.csPrimaryPorts.splice('+i+',1);render()">x</button>':'')+
+          '</div>'
+        ).join('')+
+        '</div></div>'+
+      '<div class="fg">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+          '<label style="margin:0">Volumes</label>'+
+          '<button type="button" class="btn btn-xs" onclick="S.csPrimaryVolumes.push({name:\'\',mount:\'\'});render()">+ Add Volume</button>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px">'+
+        S.csPrimaryVolumes.map((v,i)=>
+          '<div style="display:flex;gap:6px;align-items:center">'+
+            '<input placeholder="Volume name (auto)" value="'+escHtml(v.name)+'" oninput="S.csPrimaryVolumes['+i+'].name=this.value" style="width:200px">'+
+            '<input placeholder="/app/data" value="'+escHtml(v.mount)+'" oninput="S.csPrimaryVolumes['+i+'].mount=this.value" style="flex:1">'+
+            (S.csPrimaryVolumes.length>1?'<button type="button" class="btn-danger btn-xs" onclick="S.csPrimaryVolumes.splice('+i+',1);render()">x</button>':'')+
+          '</div>'
+        ).join('')+
+        '</div></div>'+
+      '<div class="fg"><label>Environment Variables (KEY=VALUE, one per line)</label>'+
+        '<textarea rows="4" placeholder="APP_ENV=production&#10;DATABASE_URL=postgres://..." style="font-family:var(--mono);font-size:12px" oninput="S.csPrimaryEnv=this.value">'+escHtml(S.csPrimaryEnv)+'</textarea></div>'+
+    '</div>'+
+    '<div style="max-width:860px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+        '<div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px">'+ico('box',15,'var(--accent2)')+'Sidecar Services</div>'+
+        '<button type="button" class="btn btn-sm" onclick="S.csSidecars.push({name:\'\',image:\'\',env:\'\',volumes:[{name:\'\',mount:\'\'}],healthTest:\'\'});render()" style="display:flex;align-items:center;gap:5px">'+ico('plus',12)+' Add Sidecar</button>'+
+      '</div>'+
+      (sc.length?sc.map(sidecarCard).join(''):
+        '<div class="card" style="text-align:center;padding:28px;border-style:dashed;border-color:var(--border2);color:var(--muted)">'+
+          '<div style="margin-bottom:8px">'+ico('box',28)+'</div>'+
+          '<div style="font-size:13px">No sidecars yet — add a database, cache, or worker service</div>'+
+        '</div>')+
+    '</div>'+
+    '<div style="max-width:860px;display:flex;gap:8px;justify-content:flex-end;margin-top:20px">'+
+      '<button type="button" class="btn" onclick="nav(\'containers\')">Cancel</button>'+
+      '<button type="submit" class="btn-primary" style="display:flex;align-items:center;gap:6px"'+(S.deploying?' disabled':'')+'>'+
+        (S.deploying?ico('loader',13)+' Deploying...':ico('layers',13)+' Deploy Stack')+'</button>'+
+    '</div>'+
+  '</form>';
+}
+async function deployComposeStack(e){
+  e.preventDefault();
+  const name=S.csName.trim();
+  if(!name){set({error:'Stack name is required'});return}
+  const image=S.csPrimaryImage.trim();
+  if(!image){set({error:'Primary image is required'});return}
+  const primaryEnv={};
+  (S.csPrimaryEnv||'').trim().split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)primaryEnv[l.slice(0,i).trim()]=l.slice(i+1).trim()});
+  const ports=S.csPrimaryPorts.filter(p=>p.internal).map(p=>({internal:parseInt(p.internal),external:parseInt(p.external||p.internal),protocol:p.protocol||'tcp'}));
+  const volumes=S.csPrimaryVolumes.filter(v=>v.mount).map(v=>({name:v.name||v.mount.replace(/\//g,'-').replace(/^-/,''),mount_path:v.mount}));
+  const primary={name:S.csPrimaryName.trim()||name,image,ports,volumes,environment:primaryEnv};
+  const sidecars=S.csSidecars.map(s=>{
+    const env={};
+    (s.env||'').trim().split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)env[l.slice(0,i).trim()]=l.slice(i+1).trim()});
+    const vols=(s.volumes||[]).filter(v=>v.mount).map(v=>({name:v.name||v.mount.replace(/\//g,'-').replace(/^-/,''),mount_path:v.mount}));
+    const sc={name:s.name,image:s.image,environment:env,volumes:vols};
+    if(s.healthTest&&s.healthTest.trim()){
+      const parts=s.healthTest.trim().split(/\s+/);
+      sc.health_check={test:parts,interval:'10s',timeout:'5s',retries:5};
+    }
+    return sc;
+  }).filter(s=>s.name&&s.image);
+  set({deploying:true,error:null});
+  try{
+    await api('POST','/deployments/compose',{name,domain:S.csDomain,primary,sidecars,env:primaryEnv});
+    await load();
+    set({page:'compose',deploying:false,csName:'',csDomain:'',csPrimaryImage:'',csPrimaryName:'',
+      csPrimaryPorts:[{internal:'',external:'',protocol:'tcp'}],
+      csPrimaryVolumes:[{name:'',mount:''}],csPrimaryEnv:'',csSidecars:[]});
+    loadComposeStacks();
+  }catch(err){set({deploying:false,error:err.message})}
 }
 // ── Nginx page ────────────────────────────────────────────────────────────────
 function pageNginx(){

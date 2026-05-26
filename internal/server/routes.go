@@ -73,6 +73,9 @@ func registerRoutes(
 	r.GET("/deployments/:id/logs", streamLogs(engine))
 	r.GET("/deployments/:id/compose", getComposeDetail(engine))
 
+	// Multi-service compose stack deployment
+	r.POST("/deployments/compose", createComposeDeployment(engine, reg))
+
 	// Docker discovery
 	r.GET("/docker/containers", listDockerContainers())
 	r.GET("/docker/compose/stacks", listComposeStacks())
@@ -776,7 +779,150 @@ func removeComposeStack() gin.HandlerFunc {
 	}
 }
 
-// guessAppID maps a container image/name to a known Vessel app template ID.
+// createComposeDeployment deploys a user-defined multi-service compose stack.
+// The caller provides a primary service plus zero or more sidecar services,
+// and Vessel generates, writes, and starts the compose file.
+func createComposeDeployment(engine *deployment.Engine, reg *registry.Registry) gin.HandlerFunc {
+	type svcReq struct {
+		Name        string            `json:"name"         binding:"required"`
+		Image       string            `json:"image"        binding:"required"`
+		Ports       []struct {
+			Internal int    `json:"internal"`
+			External int    `json:"external"`
+			Protocol string `json:"protocol"`
+		} `json:"ports"`
+		Volumes []struct {
+			Name      string `json:"name"`
+			MountPath string `json:"mount_path"`
+		} `json:"volumes"`
+		Environment map[string]string `json:"environment"`
+		HealthCheck *struct {
+			Test     []string `json:"test"`
+			Interval string   `json:"interval"`
+			Timeout  string   `json:"timeout"`
+			Retries  int      `json:"retries"`
+		} `json:"health_check"`
+	}
+	type req struct {
+		Name     string            `json:"name"     binding:"required"`
+		Domain   string            `json:"domain"`
+		Env      map[string]string `json:"env"`
+		Primary  svcReq            `json:"primary"  binding:"required"`
+		Sidecars []svcReq          `json:"sidecars"`
+	}
+	return func(c *gin.Context) {
+		var r req
+		if err := c.ShouldBindJSON(&r); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateDeploymentName(r.Name); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateDomain(r.Domain); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateImageRef(r.Primary.Image); err != nil {
+			c.JSON(400, gin.H{"error": "primary image: " + err.Error()})
+			return
+		}
+
+		// Build a synthetic AppTemplate from the request
+		tmpl := &registry.AppTemplate{
+			ID:    r.Name,
+			Name:  r.Name,
+			Image: r.Primary.Image,
+		}
+		for _, p := range r.Primary.Ports {
+			proto := p.Protocol
+			if proto == "" {
+				proto = "tcp"
+			}
+			tmpl.Ports = append(tmpl.Ports, registry.Port{
+				Internal: p.Internal,
+				External: p.External,
+				Protocol: proto,
+			})
+			if tmpl.ProxyPort == 0 {
+				tmpl.ProxyPort = p.Internal
+			}
+		}
+		for _, v := range r.Primary.Volumes {
+			tmpl.Volumes = append(tmpl.Volumes, registry.Volume{
+				Name:      v.Name,
+				MountPath: v.MountPath,
+			})
+		}
+		if r.Primary.HealthCheck != nil && len(r.Primary.HealthCheck.Test) > 0 {
+			tmpl.HealthCheck = registry.HealthCheck{
+				Test:     r.Primary.HealthCheck.Test,
+				Interval: r.Primary.HealthCheck.Interval,
+				Timeout:  r.Primary.HealthCheck.Timeout,
+				Retries:  r.Primary.HealthCheck.Retries,
+			}
+		}
+
+		// Build sidecar service definitions
+		for _, s := range r.Sidecars {
+			if err := validateImageRef(s.Image); err != nil {
+				c.JSON(400, gin.H{"error": "sidecar " + s.Name + " image: " + err.Error()})
+				return
+			}
+			sdef := registry.ServiceDef{
+				Name:        s.Name,
+				Image:       s.Image,
+				Environment: s.Environment,
+				Optional:    false,
+				Role:        "sidecar",
+			}
+			for _, v := range s.Volumes {
+				sdef.Volumes = append(sdef.Volumes, registry.Volume{
+					Name:      v.Name,
+					MountPath: v.MountPath,
+				})
+			}
+			if s.HealthCheck != nil && len(s.HealthCheck.Test) > 0 {
+				sdef.HealthCheck = registry.HealthCheck{
+					Test:     s.HealthCheck.Test,
+					Interval: s.HealthCheck.Interval,
+					Timeout:  s.HealthCheck.Timeout,
+					Retries:  s.HealthCheck.Retries,
+				}
+			}
+			tmpl.ExtraServices = append(tmpl.ExtraServices, sdef)
+		}
+
+		// Merge primary env vars into the env map
+		env := r.Env
+		if env == nil {
+			env = make(map[string]string)
+		}
+		for k, v := range r.Primary.Environment {
+			if _, exists := env[k]; !exists {
+				env[k] = v
+			}
+		}
+
+		engine.RegisterTemp(tmpl)
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
+		defer cancel()
+
+		d, err := engine.Deploy(ctx, deployment.DeployRequest{
+			AppID:  r.Name,
+			Name:   r.Name,
+			Domain: r.Domain,
+			Env:    env,
+		})
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(201, deploymentResponse(reg, d))
+	}
+}
 func guessAppID(image, name string) string {
 	s := strings.ToLower(image + " " + name)
 	switch {
