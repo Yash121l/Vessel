@@ -58,7 +58,7 @@ func Start(cfg *config.Config) error {
 
 	// Register routes
 	api := r.Group("/api/v1")
-	registerRoutes(api, db, reg, engine, cfg)
+	registerRoutes(api, db, reg, engine)
 
 	// Serve embedded UI
 	r.NoRoute(serveUI())

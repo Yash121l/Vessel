@@ -5,21 +5,19 @@ import (
 	"encoding/json"
 	"os/exec"
 	"strings"
-	"time"
 )
 
 // Container represents a running Docker container discovered on the host.
 type Container struct {
-	ID      string            `json:"id"`
-	Name    string            `json:"name"`
-	Image   string            `json:"image"`
-	Status  string            `json:"status"`
-	State   string            `json:"state"` // running, exited, paused
-	Ports   []string          `json:"ports"`
-	Labels  map[string]string `json:"labels"`
-	Created time.Time         `json:"created"`
-	// ManagedByVessel is true if this container was deployed by Vessel
-	ManagedByVessel bool `json:"managed_by_vessel"`
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	Image           string            `json:"image"`
+	Status          string            `json:"status"`
+	State           string            `json:"state"` // running, exited, paused
+	Ports           []string          `json:"ports"`
+	Labels          map[string]string `json:"labels"`
+	CreatedAt       string            `json:"created_at"`
+	ManagedByVessel bool              `json:"managed_by_vessel"`
 }
 
 type dockerPsEntry struct {
@@ -62,6 +60,7 @@ func ListContainers(ctx context.Context) ([]Container, error) {
 			State:           entry.State,
 			Ports:           parsePorts(entry.Ports),
 			Labels:          labels,
+			CreatedAt:       entry.Created,
 			ManagedByVessel: labels["vessel.managed"] == "true",
 		}
 		containers = append(containers, c)

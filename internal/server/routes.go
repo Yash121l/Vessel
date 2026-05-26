@@ -10,7 +10,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/Yash121l/Vessel/internal/config"
 	"github.com/Yash121l/Vessel/internal/deployment"
 	"github.com/Yash121l/Vessel/internal/docker"
 	"github.com/Yash121l/Vessel/internal/registry"
@@ -22,7 +21,6 @@ func registerRoutes(
 	db *store.DB,
 	reg *registry.Registry,
 	engine *deployment.Engine,
-	cfg *config.Config,
 ) {
 	// Apps (templates)
 	r.GET("/apps", listApps(reg))
@@ -241,11 +239,6 @@ func streamLogs(engine *deployment.Engine) gin.HandlerFunc {
 }
 
 // --- Settings ---
-
-type settingsResponse struct {
-	Port    int    `json:"port"`
-	DataDir string `json:"data_dir"`
-}
 
 func getSettings(db *store.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
