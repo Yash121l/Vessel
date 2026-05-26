@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
 
 permissions:
   contents: write
@@ -16,6 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - uses: actions/setup-go@v5
         with:
@@ -27,7 +34,14 @@ jobs:
 
       - name: Build release binaries
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          # Resolve version from tag push or manual dispatch input
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG#v}"
+
           LDFLAGS="-s -w -X github.com/Yash121l/Vessel/internal/cli.Version=${VERSION}"
           mkdir -p dist
 
@@ -41,11 +55,15 @@ jobs:
             go build -ldflags="$LDFLAGS" -o dist/vessel_linux_armv7 .
 
           # Stamp the correct version into install.sh
-          sed -i "s/VESSEL_VERSION:-0.1.0/VESSEL_VERSION:-${VERSION}/" install.sh
+          sed -i "s/VESSEL_VERSION:-[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*/VESSEL_VERSION:-${VERSION}/" install.sh
+
+          echo "RELEASE_TAG=${TAG}" >> $GITHUB_ENV
+          echo "RELEASE_VERSION=${VERSION}" >> $GITHUB_ENV
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
             dist/vessel_linux_amd64
             dist/vessel_linux_arm64
@@ -56,7 +74,7 @@ jobs:
             ## Install
 
             ```bash
-            curl -sSL https://raw.githubusercontent.com/Yash121l/Vessel/${{ github.ref_name }}/install.sh | sudo bash
+            curl -sSL https://raw.githubusercontent.com/Yash121l/Vessel/${{ env.RELEASE_TAG }}/install.sh | sudo bash
             ```
 
             ## Binaries
