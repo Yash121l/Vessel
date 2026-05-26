@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g. v0.1.0)'
+        description: 'Tag to release (e.g. v0.1.1)'
         required: true
-        default: 'v0.1.0'
+        default: 'v0.1.1'
 
 permissions:
   contents: write
@@ -34,7 +34,6 @@ jobs:
 
       - name: Build release binaries
         run: |
-          # Resolve version from tag push or manual dispatch input
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ github.event.inputs.tag }}"
           else
