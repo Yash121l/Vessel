@@ -101,6 +101,7 @@ func registerRoutes(
 
 	// System info
 	r.GET("/system/ip", systemIP())
+	r.GET("/system/dns", systemDNS())
 
 	// Nginx management
 	ngx := nginx.NewManager()
@@ -175,15 +176,78 @@ func getDeployment(db *store.DB, reg *registry.Registry) gin.HandlerFunc {
 	}
 }
 
+func systemDNS() gin.HandlerFunc {
+	type dnsResponse struct {
+		Domain          string   `json:"domain"`
+		IPs             []string `json:"ips"`
+		ExpectedIP      string   `json:"expected_ip"`
+		Resolved        bool     `json:"resolved"`
+		MatchesExpected bool     `json:"matches_expected"`
+		Error           string   `json:"error,omitempty"`
+	}
+	return func(c *gin.Context) {
+		domain := strings.TrimSpace(strings.ToLower(c.Query("domain")))
+		resp := dnsResponse{Domain: domain, IPs: []string{}, ExpectedIP: getPrimaryIPv4()}
+		if domain == "" {
+			resp.Error = "domain is required"
+			c.JSON(400, resp)
+			return
+		}
+		if err := validateDomain(domain); err != nil {
+			resp.Error = err.Error()
+			c.JSON(400, resp)
+			return
+		}
+		ips, err := net.LookupIP(domain)
+		if err != nil {
+			resp.Error = "DNS record not found yet"
+			c.JSON(200, resp)
+			return
+		}
+		seen := map[string]bool{}
+		for _, ip := range ips {
+			if v4 := ip.To4(); v4 != nil {
+				s := v4.String()
+				if !seen[s] {
+					resp.IPs = append(resp.IPs, s)
+					seen[s] = true
+				}
+			}
+		}
+		resp.Resolved = len(resp.IPs) > 0
+		if resp.ExpectedIP != "" {
+			resp.MatchesExpected = seen[resp.ExpectedIP]
+		}
+		c.JSON(200, resp)
+	}
+}
+
+func validateDomainDNSReady(domain string) error {
+	domain = strings.TrimSpace(strings.ToLower(domain))
+	if domain == "" {
+		return nil
+	}
+	ips, err := net.LookupIP(domain)
+	if err != nil {
+		return fmt.Errorf("custom domain DNS is not ready yet: add an A record for %s and wait for propagation", domain)
+	}
+	for _, ip := range ips {
+		if ip.To4() != nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("custom domain DNS is not ready yet: %s has no A record", domain)
+}
+
 type createDeploymentRequest struct {
-	AppID        string            `json:"app_id" binding:"required"`
-	Name         string            `json:"name" binding:"required"`
-	Domain       string            `json:"domain"`
-	Env          map[string]string `json:"env"`
+	AppID  string            `json:"app_id" binding:"required"`
+	Name   string            `json:"name" binding:"required"`
+	Domain string            `json:"domain"`
+	Env    map[string]string `json:"env"`
 	// SkipServices lists optional sidecar service names to omit.
 	// Use this when you want to provide your own external database/cache/etc.
 	// Example: ["n8n-db"] to skip the managed Postgres and supply DATABASE_URL yourself.
-	SkipServices []string          `json:"skip_services"`
+	SkipServices []string `json:"skip_services"`
 }
 
 func createDeployment(engine *deployment.Engine, reg *registry.Registry) gin.HandlerFunc {
@@ -198,6 +262,10 @@ func createDeployment(engine *deployment.Engine, reg *registry.Registry) gin.Han
 			return
 		}
 		if err := validateDomain(req.Domain); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateDomainDNSReady(req.Domain); err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
@@ -613,6 +681,10 @@ func deployCustomContainer(engine *deployment.Engine) gin.HandlerFunc {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
+		if err := validateDomainDNSReady(req.Domain); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 		if err := validateEnv(req.Env); err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
@@ -868,13 +940,14 @@ func selfUpdate() gin.HandlerFunc {
 		}
 	}
 }
+
 // The caller provides a primary service plus zero or more sidecar services,
 // and Vessel generates, writes, and starts the compose file.
 func createComposeDeployment(engine *deployment.Engine, reg *registry.Registry) gin.HandlerFunc {
 	type svcReq struct {
-		Name        string            `json:"name"         binding:"required"`
-		Image       string            `json:"image"        binding:"required"`
-		Ports       []struct {
+		Name  string `json:"name"         binding:"required"`
+		Image string `json:"image"        binding:"required"`
+		Ports []struct {
 			Internal int    `json:"internal"`
 			External int    `json:"external"`
 			Protocol string `json:"protocol"`
@@ -909,6 +982,10 @@ func createComposeDeployment(engine *deployment.Engine, reg *registry.Registry) 
 			return
 		}
 		if err := validateDomain(r.Domain); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := validateDomainDNSReady(r.Domain); err != nil {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}

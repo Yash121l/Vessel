@@ -194,6 +194,8 @@ let S={
   autoRefreshEnabled:false,
   // DNS guidance
   systemIP:null,  // string | null, fetched once on demand
+  dnsCheck:null,
+  dnsChecking:false,
   // Deploy wizard
   deployStep:1,
   deployWizardApp:null,
@@ -331,9 +333,14 @@ async function deployCustom(e){
   if(!image){set({error:'Image is required'});return}
   const name=f.cname.value.trim();
   if(!name){set({error:'Deployment name is required'});return}
+  const domain=f.cdomain.value.trim().toLowerCase();
+  if(domain){
+    const check=S.dnsCheck&&S.dnsCheck.domain===domain?S.dnsCheck:null;
+    if(!check||!check.resolved){set({error:'Custom domain DNS is not ready yet. Add the A record, then use Check DNS before deploying.'});return}
+  }
   set({deploying:true,error:null});
   try{
-    await api('POST','/docker/deploy',{image,name,domain:f.cdomain.value,ports,volumes,env});
+    await api('POST','/docker/deploy',{image,name,domain,ports,volumes,env});
     await load();set({page:'containers',deploying:false,hubSelected:null,hubResults:[],hubQuery:'',customPorts:[{internal:'',external:'',protocol:'tcp'}],customVolumes:[{name:'',mount:''}]});
   }catch(e){set({deploying:false,error:e.message})}
 }
@@ -493,9 +500,25 @@ async function ensureSystemIP(){
   if(S.systemIP!==null)return;
   try{const d=await api('GET','/system/ip');S.systemIP=d.ip||'';}catch{S.systemIP='';}
 }
+async function checkDNS(domain){
+  domain=(domain||'').trim().toLowerCase();
+  if(!domain)return;
+  S.dnsChecking=true;render();
+  try{
+    const d=await api('GET','/system/dns?domain='+encodeURIComponent(domain));
+    set({dnsCheck:d,dnsChecking:false});
+  }catch(e){
+    set({dnsCheck:{domain,ips:[],resolved:false,error:e.message},dnsChecking:false});
+  }
+}
 function dnsGuidanceBox(domain){
   if(!domain)return'';
+  domain=(domain||'').trim().toLowerCase();
   const ip=S.systemIP||'\u2026';
+  const check=S.dnsCheck&&S.dnsCheck.domain===domain?S.dnsCheck:null;
+  const ips=check&&check.ips&&check.ips.length?check.ips.join(', '):'';
+  const ready=check&&check.resolved;
+  const checked=!!check;
   return'<div style="background:var(--blue-dim);border:1px solid var(--blue);border-radius:var(--r);padding:12px 14px;margin-top:8px;font-size:12px">'+
     '<div style="font-weight:600;color:var(--blue);margin-bottom:8px">'+
       ico('globe',13,'var(--blue)')+' DNS & SSL readiness'+
@@ -514,6 +537,15 @@ function dnsGuidanceBox(domain){
       '<span style="color:var(--muted)">to</span>'+
       '<code style="flex:1;background:var(--surface2);padding:3px 8px;border-radius:4px">'+escHtml(domain)+'</code>'+
       '<button class="btn btn-xs" onclick="copyVal(\''+escAttr(domain)+'\',this)">Copy target</button>'+
+    '</div>'+
+    '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+      '<button type="button" class="btn btn-xs" onclick="checkDNS(\''+escAttr(domain)+'\')" title="Check public DNS for this hostname">'+(S.dnsChecking?ico('loader',11)+' Checking':'Check DNS')+'</button>'+
+      (checked?(ready?
+        '<span class="tag tag-running"><span class="dot"></span>DNS found</span><span style="color:var(--muted2)">A record resolves to '+escHtml(ips)+'</span>':
+        '<span class="tag tag-error"><span class="dot"></span>DNS not ready</span><span style="color:var(--muted2)">'+escHtml(check.error||'No A record found yet. Wait for propagation, then refresh the check.')+'</span>'):
+        '<span style="color:var(--muted2)">Run this check after adding the A record. Certificate issuance waits on DNS.</span>')+
+      (checked&&ready&&check.expected_ip&&!check.matches_expected?
+        '<span style="color:var(--yellow)">Detected server IP is '+escHtml(check.expected_ip)+'. If this is a private cloud IP, this warning is expected.</span>':'')+
     '</div>'+
   '</div>';
 }
@@ -534,6 +566,14 @@ function wizardSelectApp(id){
   set({deployWizardApp:app,deployWizardEnv:env,deployStep:2});
 }
 function wizardNext(){
+  if(S.deployStep===2&&S.deployWizardDomain){
+    const d=S.deployWizardDomain.trim().toLowerCase();
+    const check=S.dnsCheck&&S.dnsCheck.domain===d?S.dnsCheck:null;
+    if(!check||!check.resolved){
+      set({error:'Custom domain DNS is not ready yet. Add the A record, then use Check DNS before continuing.'});
+      return;
+    }
+  }
   if(S.deployStep<3)set({deployStep:S.deployStep+1});
 }
 function wizardBack(){
@@ -635,11 +675,61 @@ function toggleWizardService(name, skip) {
   }
 }
 
+function templateInsights(app){
+  const facts=[];
+  const vars=app.env_vars||[];
+  const services=app.extra_services||[];
+  const known={
+    umami:['Default first login is usually username admin and password umami. Change it immediately after sign-in.'],
+    grafana:['Initial admin username is controlled by GF_SECURITY_ADMIN_USER. Set GF_SECURITY_ADMIN_PASSWORD before deploying.'],
+    nextcloud:['The admin account is created from NEXTCLOUD_ADMIN_USER and NEXTCLOUD_ADMIN_PASSWORD on first boot.'],
+    keycloak:['The first admin account is created from KEYCLOAK_ADMIN and KEYCLOAK_ADMIN_PASSWORD.'],
+    n8n:['Basic auth is enabled by default. Keep N8N_BASIC_AUTH_PASSWORD and N8N_ENCRYPTION_KEY safe because they protect workflows and credentials.'],
+    pihole:['The Pi-hole admin panel uses WEBPASSWORD. DNS/ad-blocking templates may need additional network or router configuration after deployment.'],
+    gitlab:['The root account uses GITLAB_ROOT_PASSWORD on first boot. GitLab can take several minutes before the web UI is ready.'],
+    seafile:['The admin account uses SEAFILE_ADMIN_EMAIL and SEAFILE_ADMIN_PASSWORD.'],
+    directus:['The first admin user uses ADMIN_EMAIL and ADMIN_PASSWORD.'],
+    appflowy:['The admin account uses APPFLOWY_GOTRUE_ADMIN_EMAIL and APPFLOWY_GOTRUE_ADMIN_PASSWORD.'],
+    superset:['The initial admin user is created from ADMIN_USERNAME, ADMIN_EMAIL, and ADMIN_PASSWORD.'],
+    mailu:['Mailu needs correct MX/SPF/DKIM/DMARC DNS outside Vessel for real mail delivery.'],
+    mailcow:['Mailcow needs correct MX/SPF/DKIM/DMARC DNS outside Vessel for real mail delivery.'],
+    plex:['Plex may require a claim token from plex.tv/claim on first deployment.'],
+  };
+  (known[app.id]||[]).forEach(x=>facts.push(x));
+  vars.forEach(ev=>{
+    const k=(ev.key||'').toUpperCase();
+    if(k.includes('ADMIN')&&k.includes('PASSWORD')){
+      facts.push('Set '+ev.key+' now; it becomes the initial admin password for this app.');
+    }else if(k.includes('ADMIN')&&(k.includes('USER')||k.includes('EMAIL'))&&ev.default){
+      facts.push('Initial admin identity: '+ev.key+' defaults to '+ev.default+'.');
+    }else if(ev.secret&&ev.required&&!ev.default){
+      facts.push('Generate and save '+ev.key+' before deploying. It may be required for logins, sessions, or stored credentials.');
+    }
+  });
+  if(services.length){
+    facts.push('Vessel will also start '+services.length+' sidecar service'+(services.length>1?'s':'')+' for this template: '+services.map(s=>s.name).join(', ')+'.');
+  }
+  if(app.health_check&&app.health_check.test&&app.health_check.test.length){
+    facts.push('Health checks are configured. The app may show as starting until its internal readiness endpoint responds.');
+  }
+  return [...new Set(facts)].slice(0,6);
+}
+function onboardingBox(app, facts){
+  if(!facts.length)return'';
+  return'<div class="card" style="margin-bottom:16px;background:var(--surface2);border-color:var(--border2)">'+
+    '<div style="font-weight:600;font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:8px">'+ico('alert-triangle',14,'var(--yellow)')+'First-run notes for '+escHtml(app.name||app.id)+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:7px">'+
+      facts.map(f=>'<div style="display:flex;gap:8px;color:var(--muted2);font-size:12px"><span style="color:var(--yellow)">•</span><span>'+escHtml(f)+'</span></div>').join('')+
+    '</div>'+
+  '</div>';
+}
+
 function wizardStep2Content() {
   const app = S.deployWizardApp;
   if (!app) return '';
   const vars = app.env_vars || [];
   const services = app.extra_services || [];
+  const insights = templateInsights(app);
   
   const envRows = vars.map(ev => {
     const id = 'wenv_' + ev.key;
@@ -689,6 +779,7 @@ function wizardStep2Content() {
       '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Step 2 of 3</div>' +
       '<div style="font-weight:700;font-size:16px">Configure ' + escHtml(app.name || app.id) + '</div>' +
     '</div>' +
+    onboardingBox(app, insights) +
     '<div class="card" style="margin-bottom:16px">' +
       '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">' + ico('settings', 14, 'var(--accent)') + 'Deployment Settings</div>' +
       '<div class="grid2">' +
@@ -699,7 +790,7 @@ function wizardStep2Content() {
           '<input placeholder="app.example.com" ' +
             'value="' + escAttr(S.deployWizardDomain) + '" ' +
             'onfocus="ensureSystemIP()" ' +
-            'oninput="S.deployWizardDomain=this.value;(function(){const box=document.getElementById(\'wiz-dns-box\');if(box)box.innerHTML=dnsGuidanceBox(S.deployWizardDomain);})()">' +
+            'oninput="S.deployWizardDomain=this.value;S.dnsCheck=null;(function(){const box=document.getElementById(\'wiz-dns-box\');if(box)box.innerHTML=dnsGuidanceBox(S.deployWizardDomain);})()">' +
           '<div id="wiz-dns-box">' + dnsGuidanceBox(S.deployWizardDomain) + '</div>' +
         '</div>' +
       '</div>' +
@@ -813,6 +904,7 @@ function wizardStep3(){
   const domain = S.deployWizardDomain || '';
   const env = S.deployWizardEnv || {};
   const skip = S.deployWizardSkip || [];
+  const insights = templateInsights(app);
 
   const services = app.extra_services || [];
   const activeServices = services.filter(s => !skip.includes(s.name));
@@ -838,6 +930,7 @@ function wizardStep3(){
       '<div style="font-weight:600;font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:8px">' + ico('layers', 14, 'var(--accent)') + 'Topology & Service Map</div>' +
       topologyDiagram(app) +
     '</div>' +
+    onboardingBox(app, insights) +
     '<div class="card" style="margin-bottom:16px">' +
       '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">' + ico('check-circle', 14, 'var(--accent)') + 'Deployment Details</div>' +
       '<table class="tbl" style="margin-bottom:12px">' +
@@ -878,7 +971,11 @@ async function wizardSubmit(){
   if (!app) return;
   const name = S.deployWizardName.trim();
   if (!name) { set({error: 'Deployment name is required'}); return; }
-  const domain = S.deployWizardDomain.trim();
+  const domain = S.deployWizardDomain.trim().toLowerCase();
+  if(domain){
+    const check=S.dnsCheck&&S.dnsCheck.domain===domain?S.dnsCheck:null;
+    if(!check||!check.resolved){set({error:'Custom domain DNS is not ready yet. Add the A record, then use Check DNS before deploying.'});return}
+  }
   const env = S.deployWizardEnv;
   const skip = S.deployWizardSkip;
 
@@ -1389,7 +1486,7 @@ function deployCustomForm(){
         '<input id="cimage" name="cimage" placeholder="nginx:latest  ·  postgres:16  ·  myorg/myapp:1.0" '+(sel?'value="'+escHtml(sel.slug)+'"':'')+' required></div>'+
       '<div class="grid2">'+
         '<div class="fg"><label>Deployment Name *</label><input name="cname" placeholder="my-nginx" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required></div>'+
-        '<div class="fg"><label>Custom Domain (optional)</label><input name="cdomain" placeholder="app.example.com"></div>'+
+        '<div class="fg"><label>Custom Domain (optional)</label><input name="cdomain" placeholder="app.example.com" onfocus="ensureSystemIP()" oninput="S.dnsCheck=null;const box=document.getElementById(\'custom-dns-box\');if(box)box.innerHTML=dnsGuidanceBox(this.value)"><div id="custom-dns-box"></div></div>'+
       '</div>'+
       '<div class="fg">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
@@ -1504,7 +1601,7 @@ function deployComposeForm(){
       '<div style="font-weight:700;font-size:14px;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ico('layers',15,'var(--accent)')+'Stack Settings</div>'+
       '<div class="grid2">'+
         '<div class="fg"><label>Stack Name *</label><input name="csname" placeholder="my-stack" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" value="'+escHtml(S.csName)+'" oninput="S.csName=this.value" required></div>'+
-        '<div class="fg"><label>Custom Domain (optional)</label><input name="csdomain" placeholder="app.example.com" value="'+escHtml(S.csDomain)+'" oninput="S.csDomain=this.value"></div>'+
+        '<div class="fg"><label>Custom Domain (optional)</label><input name="csdomain" placeholder="app.example.com" value="'+escHtml(S.csDomain)+'" onfocus="ensureSystemIP()" oninput="S.csDomain=this.value;S.dnsCheck=null;const box=document.getElementById(\'compose-dns-box\');if(box)box.innerHTML=dnsGuidanceBox(S.csDomain)"><div id="compose-dns-box">'+dnsGuidanceBox(S.csDomain)+'</div></div>'+
       '</div>'+
     '</div>'+
     '<div class="card" style="max-width:860px;margin-bottom:16px">'+
@@ -1571,6 +1668,11 @@ async function deployComposeStack(e){
   e.preventDefault();
   const name=S.csName.trim();
   if(!name){set({error:'Stack name is required'});return}
+  if(S.csDomain){
+    const d=S.csDomain.trim().toLowerCase();
+    const check=S.dnsCheck&&S.dnsCheck.domain===d?S.dnsCheck:null;
+    if(!check||!check.resolved){set({error:'Custom domain DNS is not ready yet. Add the A record, then use Check DNS before deploying.'});return}
+  }
   const image=S.csPrimaryImage.trim();
   if(!image){set({error:'Primary image is required'});return}
   const primaryEnv={};
