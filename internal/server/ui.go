@@ -23,6 +23,17 @@ const uiHTML = `<!DOCTYPE html>
   --mono:'SF Mono','Fira Code','Cascadia Code',monospace;
   --sidebar:220px;
 }
+html[data-theme="light"]{
+  --bg:#f1f5f9;--surface:#ffffff;--surface2:#f8fafc;--surface3:#e2e8f0;
+  --border:#e2e8f0;--border2:#cbd5e1;
+  --text:#0f172a;--muted:#64748b;--muted2:#475569;
+  --accent:#6366f1;--accent2:#4f46e5;--accent-dim:#6366f115;
+  --green:#16a34a;--green-dim:#16a34a15;
+  --red:#dc2626;--red-dim:#dc262615;
+  --yellow:#d97706;--yellow-dim:#d9770615;
+  --blue:#2563eb;--blue-dim:#2563eb15;
+  --purple:#9333ea;--purple-dim:#9333ea15;
+}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.5}
 a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent2)}
 button{cursor:pointer;font-family:var(--font);font-size:13px;border:none;border-radius:var(--r);padding:7px 14px;transition:all .15s;font-weight:500;white-space:nowrap}
@@ -50,6 +61,7 @@ label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;font-wei
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .editor{font-family:var(--mono);font-size:12px;line-height:1.6;background:#0d1117;border:1px solid var(--border2);border-radius:var(--r);color:#c9d1d9;padding:16px;width:100%;resize:vertical;min-height:300px}
 .editor:focus{border-color:var(--accent);outline:none}
+html[data-theme="light"] .editor{background:#f8fafc;color:var(--text)}
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:24px}
 .tab{padding:9px 18px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
 .tab:hover{color:var(--text)}.tab.on{color:var(--accent);border-bottom-color:var(--accent)}
@@ -101,12 +113,30 @@ const ICONS={
   'file-text':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
   cpu:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>',
   globe:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+  sun:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>',
+  moon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
 };
 function ico(name,size,color){
   size=size||16;
   const svg=ICONS[name]||ICONS.box;
   return svg.replace('<svg ','<svg width="'+size+'" height="'+size+'" style="flex-shrink:0'+(color?';color:'+color:'')+'" ');
 }
+// ── Theme (light / dark) ──────────────────────────────────────────────────────
+function applyTheme(t){
+  document.documentElement.setAttribute('data-theme',t);
+  localStorage.setItem('vessel-theme',t);
+}
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme')||'dark';
+  applyTheme(cur==='dark'?'light':'dark');
+  render();
+}
+(function initTheme(){
+  const saved=localStorage.getItem('vessel-theme');
+  if(saved){applyTheme(saved);return;}
+  const prefersDark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(prefersDark?'dark':'light');
+})();
 // ── Image avatar: Docker Hub logo with colored-initials fallback ──────────────
 const HUB_COLORS=['#6366f1','#3b82f6','#22c55e','#f59e0b','#ef4444','#a855f7','#06b6d4','#ec4899'];
 function strColor(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))&0xffffffff;return HUB_COLORS[Math.abs(h)%HUB_COLORS.length]}
@@ -429,8 +459,13 @@ function render(){
     '<div style="padding:12px 16px;border-top:1px solid var(--border)">'+
       '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">'+escHtml((S.currentUser&&S.currentUser.username)||'')+' · '+escHtml((S.currentUser&&S.currentUser.role)||'')+'</div>'+
       '<button class="btn btn-xs" onclick="logout()" style="width:100%;margin-bottom:8px">Log out</button>'+
-      '<a href="https://github.com/Yash121l/Vessel" target="_blank" style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">'+
-        ico('github',13)+'GitHub</a>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between">'+
+        '<a href="https://github.com/Yash121l/Vessel" target="_blank" style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">'+
+          ico('github',13)+'GitHub</a>'+
+        '<button class="btn btn-xs" onclick="toggleTheme()" title="Toggle light/dark mode" style="display:flex;align-items:center;gap:4px;padding:3px 8px">'+
+          (document.documentElement.getAttribute('data-theme')==='light'?ico('moon',12)+' Dark':ico('sun',12)+' Light')+
+        '</button>'+
+      '</div>'+
     '</div></nav>';
   const errBanner=S.error?'<div style="background:var(--red-dim);border:1px solid #ef444430;border-radius:var(--r);padding:10px 16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;gap:12px"><span style="color:var(--red);font-size:13px">'+S.error+'</span><button class="btn btn-xs" onclick="set({error:null})">✕</button></div>':'';
   const pages={containers:pageContainers,compose:pageCompose,nginx:pageNginx,deploy:pageDeploy,logs:pageLogs,settings:pageSettings};
