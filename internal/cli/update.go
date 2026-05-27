@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/Yash121l/Vessel/internal/config"
+	"github.com/Yash121l/Vessel/internal/logger"
 )
 
 const (
@@ -34,12 +36,21 @@ func init() {
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load()
+	if err == nil {
+		logger.Init(debug, cfg.DataDir)
+		defer logger.Close()
+	}
+
 	fmt.Printf("Vessel %s — checking for updates…\n", Version)
+	logger.Infof("Vessel %s — checking for updates…", Version)
 
 	latest, downloadURL, err := fetchLatestRelease()
 	if err != nil {
+		logger.Errorf("could not fetch release info: %v", err)
 		return fmt.Errorf("could not fetch release info: %w", err)
 	}
+
 
 	// Strip leading 'v' for comparison
 	latestVer := strings.TrimPrefix(latest, "v")
@@ -47,32 +58,40 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	if latestVer == currentVer {
 		fmt.Printf("Already on the latest version (%s). Nothing to do.\n", Version)
+		logger.Infof("Already on the latest version (%s). Nothing to do.", Version)
 		return nil
 	}
 
 	fmt.Printf("New version available: %s → %s\n", currentVer, latestVer)
 	fmt.Printf("Downloading from %s…\n", downloadURL)
+	logger.Infof("New version available: %s → %s. Downloading from %s", currentVer, latestVer, downloadURL)
 
 	if err := downloadAndReplace(downloadURL, vesselBin); err != nil {
+		logger.Errorf("download failed: %v", err)
 		return fmt.Errorf("download failed: %w", err)
 	}
 
 	fmt.Printf("Binary updated to %s\n", latestVer)
+	logger.Infof("Binary successfully updated to %s", latestVer)
 
 	// Restart the systemd service unless --no-restart was passed
 	// (the server's selfUpdate handler handles restart itself after flushing SSE).
 	if noRestart {
 		fmt.Println("Skipping service restart (--no-restart).")
+		logger.Infof("Skipping service restart (--no-restart).")
 		return nil
 	}
 
 	// Restart the systemd service if running under systemd
 	if isSystemdManaged() {
 		fmt.Println("Restarting vessel service…")
+		logger.Infof("Restarting vessel service via systemctl...")
 		out, err := exec.Command("systemctl", "restart", vesselSvc).CombinedOutput()
 		if err != nil {
+			logger.Errorf("systemctl restart failed: %s: %v", strings.TrimSpace(string(out)), err)
 			return fmt.Errorf("systemctl restart failed: %s: %w", strings.TrimSpace(string(out)), err)
 		}
+
 		fmt.Println("Service restarted. Vessel is now running the new version.")
 	} else {
 		fmt.Println("Not running under systemd — please restart Vessel manually.")

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Yash121l/Vessel/internal/logger"
 	_ "modernc.org/sqlite"
 )
 
@@ -16,21 +17,27 @@ type DB struct {
 
 // Open opens (or creates) the SQLite database at the given path.
 func Open(path string) (*DB, error) {
+	logger.Infof("Opening SQLite database at path: %s", path)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		logger.Errorf("failed to create database directory for path %s: %v", path, err)
 		return nil, fmt.Errorf("cannot create db directory: %w", err)
 	}
 	db, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_foreign_keys=on")
 	if err != nil {
+		logger.Errorf("failed to open SQLite connection at %s: %v", path, err)
 		return nil, fmt.Errorf("cannot open database: %w", err)
 	}
 	db.SetMaxOpenConns(1) // SQLite is single-writer
+	logger.Infof("Successfully opened SQLite database connection")
 	return &DB{db}, nil
 }
 
 // Migrate runs all schema migrations.
 func (db *DB) Migrate() error {
+	logger.Infof("Running database schema migrations...")
 	_, err := db.Exec(schema)
 	if err != nil {
+		logger.Errorf("initial schema migration failed: %v", err)
 		return err
 	}
 	// Run additive migrations for existing databases
@@ -43,8 +50,10 @@ func (db *DB) Migrate() error {
 	}
 	for _, m := range migrations {
 		// Ignore errors — column likely already exists
+		logger.Debugf("Applying additive migration if needed: %s", m)
 		_, _ = db.Exec(m)
 	}
+	logger.Infof("Database migrations completed successfully")
 	return nil
 }
 

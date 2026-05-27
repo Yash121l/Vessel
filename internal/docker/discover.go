@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os/exec"
 	"strings"
+
+	"github.com/Yash121l/Vessel/internal/logger"
 )
 
 // Container represents a running Docker container discovered on the host.
@@ -33,11 +35,13 @@ type dockerPsEntry struct {
 
 // ListContainers returns all containers currently known to Docker.
 func ListContainers(ctx context.Context) ([]Container, error) {
+	logger.Debugf("Querying Docker host containers (docker ps -a)...")
 	cmd := exec.CommandContext(ctx, "docker", "ps", "-a",
 		"--format", `{"ID":"{{.ID}}","Names":"{{.Names}}","Image":"{{.Image}}","Status":"{{.Status}}","State":"{{.State}}","Ports":"{{.Ports}}","Labels":"{{.Labels}}","CreatedAt":"{{.CreatedAt}}"}`,
 	)
 	out, err := cmd.Output()
 	if err != nil {
+		logger.Errorf("docker ps command failed: %v", err)
 		return nil, err
 	}
 
@@ -48,6 +52,7 @@ func ListContainers(ctx context.Context) ([]Container, error) {
 		}
 		var entry dockerPsEntry
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			logger.Errorf("failed to parse docker ps entry json: %v", err)
 			continue
 		}
 
@@ -65,25 +70,29 @@ func ListContainers(ctx context.Context) ([]Container, error) {
 		}
 		containers = append(containers, c)
 	}
+	logger.Debugf("Discovered %d containers on Docker host", len(containers))
 	return containers, nil
 }
 
 // ContainerLogs streams logs from a container — tries name first, then ID.
 func ContainerLogs(ctx context.Context, nameOrID string, lines chan<- string) error {
-	// Resolve to current container name/ID (handles restarts that change the ID)
 	resolved := resolveContainer(ctx, nameOrID)
+	logger.Infof("Streaming Docker logs for resolved container '%s'...", resolved)
 
 	cmd := exec.CommandContext(ctx, "docker", "logs", "--follow", "--timestamps", "--tail", "100", resolved)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		logger.Errorf("failed to get stdout pipe for container logs: %v", err)
 		return err
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
+		logger.Errorf("failed to get stderr pipe for container logs: %v", err)
 		return err
 	}
 	if err := cmd.Start(); err != nil {
+		logger.Errorf("failed to start streaming docker logs: %v", err)
 		return err
 	}
 
@@ -124,26 +133,50 @@ func ContainerLogs(ctx context.Context, nameOrID string, lines chan<- string) er
 
 	select {
 	case <-ctx.Done():
+		logger.Infof("Stopping container log stream for '%s' (context cancelled)", resolved)
 		_ = cmd.Process.Kill()
 		return ctx.Err()
 	case err := <-done:
+		if err != nil {
+			logger.Errorf("container log stream exited with error: %v", err)
+		} else {
+			logger.Infof("container log stream for '%s' closed cleanly", resolved)
+		}
 		return err
 	}
 }
 
 // StopContainer stops a container by name or ID.
 func StopContainer(ctx context.Context, nameOrID string) error {
-	return exec.CommandContext(ctx, "docker", "stop", resolveContainer(ctx, nameOrID)).Run()
+	resolved := resolveContainer(ctx, nameOrID)
+	logger.Infof("Executing docker stop on container '%s'...", resolved)
+	err := exec.CommandContext(ctx, "docker", "stop", resolved).Run()
+	if err != nil {
+		logger.Errorf("failed to stop container %s: %v", resolved, err)
+	}
+	return err
 }
 
 // StartContainer starts a stopped container by name or ID.
 func StartContainer(ctx context.Context, nameOrID string) error {
-	return exec.CommandContext(ctx, "docker", "start", resolveContainer(ctx, nameOrID)).Run()
+	resolved := resolveContainer(ctx, nameOrID)
+	logger.Infof("Executing docker start on container '%s'...", resolved)
+	err := exec.CommandContext(ctx, "docker", "start", resolved).Run()
+	if err != nil {
+		logger.Errorf("failed to start container %s: %v", resolved, err)
+	}
+	return err
 }
 
 // RestartContainer restarts a container by name or ID.
 func RestartContainer(ctx context.Context, nameOrID string) error {
-	return exec.CommandContext(ctx, "docker", "restart", resolveContainer(ctx, nameOrID)).Run()
+	resolved := resolveContainer(ctx, nameOrID)
+	logger.Infof("Executing docker restart on container '%s'...", resolved)
+	err := exec.CommandContext(ctx, "docker", "restart", resolved).Run()
+	if err != nil {
+		logger.Errorf("failed to restart container %s: %v", resolved, err)
+	}
+	return err
 }
 
 // resolveContainer tries to find the best identifier for a container.

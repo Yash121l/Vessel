@@ -16,6 +16,7 @@ import (
 
 	"github.com/Yash121l/Vessel/internal/deployment"
 	"github.com/Yash121l/Vessel/internal/docker"
+	"github.com/Yash121l/Vessel/internal/logger"
 	"github.com/Yash121l/Vessel/internal/nginx"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
@@ -97,7 +98,7 @@ func registerRoutes(
 	r.PUT("/settings", updateSettings(db))
 
 	// Self-update
-	r.POST("/system/update", selfUpdate())
+	r.GET("/system/update", selfUpdate())
 
 	// System info
 	r.GET("/system/ip", systemIP())
@@ -882,7 +883,13 @@ func selfUpdate() gin.HandlerFunc {
 
 		// --no-restart: download and replace binary only; we handle the restart
 		// ourselves after flushing __DONE__ to the client.
-		cmd := exec.CommandContext(ctx, exe, "update", "--no-restart")
+		var args []string
+		if logger.IsDebug() {
+			args = []string{"update", "--no-restart", "--debug"}
+		} else {
+			args = []string{"update", "--no-restart"}
+		}
+		cmd := exec.CommandContext(ctx, exe, args...)
 		stdout, _ := cmd.StdoutPipe()
 		stderr, _ := cmd.StderrPipe()
 

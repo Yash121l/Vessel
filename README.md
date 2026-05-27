@@ -191,6 +191,15 @@ Environment variable overrides:
 - `VESSEL_TEMPLATE_CATALOG_URL` — remote template catalog URL
 - `VESSEL_TEMPLATE_CATALOG_DISABLED=1` — skip remote template loading
 
+### Debug Logging
+
+To troubleshoot or run Vessel in debug mode, append the `--debug` flag to any command (e.g. `vessel serve --debug` or `vessel update --debug`).
+
+When run with `--debug`:
+- Detailed trace logs (including database transactions, reverse proxy configurations, and raw Docker Compose commands) are printed to the terminal.
+- An extensive log file `vessel.log` is generated at your configured `data_dir` (defaulting to `/var/lib/vessel/vessel.log`).
+- For normal runs without `--debug`, no log files are created, maintaining a completely clean system.
+
 ---
 
 ## Development

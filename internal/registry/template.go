@@ -11,6 +11,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Yash121l/Vessel/internal/logger"
 	"gopkg.in/yaml.v3"
 )
 
@@ -69,7 +70,7 @@ type AppTemplate struct {
 
 // ServiceDef defines a sidecar service (e.g. postgres, redis).
 type ServiceDef struct {
-	Name        string            `yaml:"name"         json:"name"`
+	Name        string            `yaml:"name"         json:"json"`
 	Image       string            `yaml:"image"        json:"image"`
 	Environment map[string]string `yaml:"environment"  json:"environment"`
 	Volumes     []Volume          `yaml:"volumes"      json:"volumes"`
@@ -103,8 +104,10 @@ func New() *Registry {
 
 // LoadEmbedded loads the YAML catalog bundled with the binary.
 func (r *Registry) LoadEmbedded() error {
+	logger.Infof("Loading embedded YAML templates...")
 	entries, err := embeddedTemplateFS.ReadDir("templates")
 	if err != nil {
+		logger.Errorf("failed to read embedded templates directory: %v", err)
 		return err
 	}
 	for _, e := range entries {
@@ -113,9 +116,11 @@ func (r *Registry) LoadEmbedded() error {
 		}
 		data, err := embeddedTemplateFS.ReadFile(filepath.Join("templates", e.Name()))
 		if err != nil {
+			logger.Errorf("failed to read embedded template %s: %v", e.Name(), err)
 			return err
 		}
 		if err := r.registerYAML(e.Name(), data); err != nil {
+			logger.Errorf("failed to register embedded template %s: %v", e.Name(), err)
 			return err
 		}
 	}
@@ -124,22 +129,28 @@ func (r *Registry) LoadEmbedded() error {
 
 // LoadFromDir loads additional YAML templates from a directory.
 func (r *Registry) LoadFromDir(dir string) error {
+	logger.Infof("Loading custom YAML templates from directory: %s", dir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			logger.Infof("Custom templates directory %s does not exist. Skipping.", dir)
 			return nil
 		}
+		logger.Errorf("failed to read custom templates directory %s: %v", dir, err)
 		return err
 	}
 	for _, e := range entries {
 		if e.IsDir() || filepath.Ext(e.Name()) != ".yaml" {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		path := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(path)
 		if err != nil {
+			logger.Errorf("failed to read custom template %s: %v", path, err)
 			return err
 		}
 		if err := r.registerYAML(e.Name(), data); err != nil {
+			logger.Errorf("failed to register custom template %s: %v", path, err)
 			return err
 		}
 	}
@@ -163,23 +174,29 @@ func (r *Registry) LoadFromRemote(catalogURL string) error {
 	if catalogURL == "" {
 		catalogURL = DefaultRemoteCatalogURL
 	}
+	logger.Infof("Fetching templates from remote catalog URL: %s", catalogURL)
 	client := &http.Client{Timeout: 4 * time.Second}
 	resp, err := client.Get(catalogURL)
 	if err != nil {
+		logger.Errorf("failed to fetch remote catalog from %s: %v", catalogURL, err)
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		logger.Errorf("remote catalog fetch returned status code: %s", resp.Status)
 		return fmt.Errorf("catalog returned %s", resp.Status)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
+		logger.Errorf("failed to read remote catalog body: %v", err)
 		return err
 	}
 	var catalog remoteCatalog
 	if err := json.Unmarshal(body, &catalog); err != nil {
+		logger.Errorf("failed to parse remote catalog json: %v", err)
 		return fmt.Errorf("parse remote catalog: %w", err)
 	}
+	logger.Infof("Remote catalog loaded successfully. Registering %d templates...", len(catalog.Templates))
 	base := resp.Request.URL
 	for _, item := range catalog.Templates {
 		if item.Content != "" {
@@ -188,6 +205,7 @@ func (r *Registry) LoadFromRemote(catalogURL string) error {
 				name = "remote template"
 			}
 			if err := r.registerYAML(name, []byte(item.Content)); err != nil {
+				logger.Errorf("failed to register inline remote template %s: %v", name, err)
 				return err
 			}
 			continue
@@ -197,24 +215,30 @@ func (r *Registry) LoadFromRemote(catalogURL string) error {
 		}
 		u, err := base.Parse(item.URL)
 		if err != nil {
+			logger.Errorf("failed to parse remote template url %s: %v", item.URL, err)
 			return fmt.Errorf("resolve template %s: %w", item.ID, err)
 		}
+		logger.Debugf("Fetching remote template content from: %s", u.String())
 		tResp, err := client.Get(u.String())
 		if err != nil {
+			logger.Errorf("failed to fetch remote template %s: %v", item.ID, err)
 			return fmt.Errorf("fetch template %s: %w", item.ID, err)
 		}
 		data, readErr := io.ReadAll(io.LimitReader(tResp.Body, 2<<20))
 		closeErr := tResp.Body.Close()
 		if readErr != nil {
+			logger.Errorf("failed to read remote template content: %v", readErr)
 			return readErr
 		}
 		if closeErr != nil {
 			return closeErr
 		}
 		if tResp.StatusCode != http.StatusOK {
+			logger.Errorf("remote template fetch returned status: %s", tResp.Status)
 			return fmt.Errorf("template %s returned %s", item.ID, tResp.Status)
 		}
 		if err := r.registerYAML(item.URL, data); err != nil {
+			logger.Errorf("failed to register remote template %s: %v", item.URL, err)
 			return err
 		}
 	}
@@ -250,11 +274,14 @@ func (r *Registry) List() []*AppTemplate {
 func (r *Registry) registerYAML(name string, data []byte) error {
 	var t AppTemplate
 	if err := yaml.Unmarshal(data, &t); err != nil {
+		logger.Errorf("failed to unmarshal template YAML %s: %v", name, err)
 		return fmt.Errorf("parse template %s: %w", name, err)
 	}
 	if t.ID == "" {
+		logger.Errorf("template YAML %s missing required field 'id'", name)
 		return fmt.Errorf("parse template %s: missing id", name)
 	}
+	logger.Debugf("Successfully registered YAML template: %s (ID: %s)", t.Name, t.ID)
 	r.templates[t.ID] = &t
 	return nil
 }

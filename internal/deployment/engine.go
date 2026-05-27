@@ -15,6 +15,7 @@ import (
 
 	"github.com/Yash121l/Vessel/internal/config"
 	"github.com/Yash121l/Vessel/internal/docker"
+	"github.com/Yash121l/Vessel/internal/logger"
 	"github.com/Yash121l/Vessel/internal/nginx"
 	"github.com/Yash121l/Vessel/internal/proxy"
 	"github.com/Yash121l/Vessel/internal/registry"
@@ -61,6 +62,7 @@ func (e *Engine) RegisterTemp(tmpl *registry.AppTemplate) {
 
 // Deploy creates and starts a new deployment.
 func (e *Engine) Deploy(ctx context.Context, req DeployRequest) (*store.Deployment, error) {
+	logger.Infof("Initiating deployment for app '%s' with name '%s'...", req.AppID, req.Name)
 	tmpl, ok := e.registry.Get(req.AppID)
 	if !ok {
 		return nil, fmt.Errorf("unknown app: %s", req.AppID)
@@ -123,11 +125,14 @@ func (e *Engine) Deploy(ctx context.Context, req DeployRequest) (*store.Deployme
 	// Configure reverse proxy if domain is set
 	if req.Domain != "" {
 		siteName := req.Name + ".conf"
+		logger.Infof("Configuring reverse proxy route for domain '%s' targeting port '%d'...", req.Domain, proxyTargetPort(tmpl))
 		if err := e.nginx.ConfigureSiteForDeployment(siteName, req.Domain, proxyTargetPort(tmpl), "", req.Name); err != nil {
 			// Non-fatal: deployment is running, nginx config failed.
+			logger.Errorf("failed to configure nginx proxy: %v", err)
 			fmt.Printf("warning: nginx site configuration failed: %v\n", err)
 		} else if err := e.nginx.ObtainCertificate(req.Domain); err != nil {
 			// Non-fatal: DNS may not have propagated or certbot may not be installed.
+			logger.Errorf("failed to obtain Let's Encrypt SSL certificate for %s: %v", req.Domain, err)
 			fmt.Printf("warning: let's encrypt certificate setup failed: %v\n", err)
 		}
 	}
@@ -158,78 +163,101 @@ func proxyTargetPort(tmpl *registry.AppTemplate) int {
 
 // Stop stops a running deployment.
 func (e *Engine) Stop(ctx context.Context, id string) error {
+	logger.Infof("Stopping deployment ID '%s'...", id)
 	d, err := e.db.GetDeployment(id)
 	if err != nil || d == nil {
+		logger.Errorf("Stop failed: deployment not found for ID: %s", id)
 		return fmt.Errorf("deployment not found: %s", id)
 	}
 	if err := e.composeStop(ctx, d.ComposeDir); err != nil {
+		logger.Errorf("Stop failed to halt docker compose services: %v", err)
 		return err
 	}
+	logger.Infof("Successfully stopped deployment ID '%s'", id)
 	return e.db.UpdateDeploymentStatus(id, "stopped")
 }
 
 // Start starts a stopped deployment.
 func (e *Engine) Start(ctx context.Context, id string) error {
+	logger.Infof("Starting deployment ID '%s'...", id)
 	d, err := e.db.GetDeployment(id)
 	if err != nil || d == nil {
+		logger.Errorf("Start failed: deployment not found for ID: %s", id)
 		return fmt.Errorf("deployment not found: %s", id)
 	}
 	if err := e.composeUp(ctx, d.ComposeDir); err != nil {
+		logger.Errorf("Start failed to bring compose services up: %v", err)
 		_ = e.db.UpdateDeploymentStatus(id, "error")
 		return err
 	}
+	logger.Infof("Successfully started deployment ID '%s'", id)
 	return e.db.UpdateDeploymentStatus(id, "running")
 }
 
 // Restart restarts a deployment.
 func (e *Engine) Restart(ctx context.Context, id string) error {
+	logger.Infof("Restarting deployment ID '%s'...", id)
 	d, err := e.db.GetDeployment(id)
 	if err != nil || d == nil {
+		logger.Errorf("Restart failed: deployment not found for ID: %s", id)
 		return fmt.Errorf("deployment not found: %s", id)
 	}
 	if err := e.composeRestart(ctx, d.ComposeDir); err != nil {
+		logger.Errorf("Restart failed: %v", err)
 		return err
 	}
+	logger.Infof("Successfully restarted deployment ID '%s'", id)
 	return e.db.UpdateDeploymentStatus(id, "running")
 }
 
 // Update pulls new images and recreates containers.
 func (e *Engine) Update(ctx context.Context, id string) error {
+	logger.Infof("Initiating image pull and update for deployment ID '%s'...", id)
 	d, err := e.db.GetDeployment(id)
 	if err != nil || d == nil {
+		logger.Errorf("Update failed: deployment not found for ID: %s", id)
 		return fmt.Errorf("deployment not found: %s", id)
 	}
 	_ = e.db.UpdateDeploymentStatus(id, "updating")
 
 	if err := e.composePull(ctx, d.ComposeDir); err != nil {
+		logger.Errorf("Update failed during compose pull phase: %v", err)
 		_ = e.db.UpdateDeploymentStatus(id, "error")
 		return fmt.Errorf("pull: %w", err)
 	}
 	if err := e.composeUp(ctx, d.ComposeDir); err != nil {
+		logger.Errorf("Update failed during compose up phase: %v", err)
 		_ = e.db.UpdateDeploymentStatus(id, "error")
 		return fmt.Errorf("up: %w", err)
 	}
+	logger.Infof("Successfully completed update for deployment ID '%s'", id)
 	return e.db.UpdateDeploymentStatus(id, "running")
 }
 
 // Remove stops and removes a deployment entirely.
 func (e *Engine) Remove(ctx context.Context, id string) error {
+	logger.Infof("Removing deployment ID '%s' entirely...", id)
 	d, err := e.db.GetDeployment(id)
 	if err != nil || d == nil {
+		logger.Errorf("Remove failed: deployment not found for ID: %s", id)
 		return fmt.Errorf("deployment not found: %s", id)
 	}
 
 	// Remove proxy route
 	if d.Domain != "" {
+		logger.Infof("Removing proxy route for domain: %s", d.Domain)
 		_ = e.proxy.RemoveRoute(d.Domain)
 	}
 
 	// Bring down containers and volumes
+	logger.Infof("Stopping and tearing down docker containers and volumes in: %s", d.ComposeDir)
 	_ = e.composeDown(ctx, d.ComposeDir)
 
 	// Remove compose directory
+	logger.Infof("Removing compose directory from filesystem: %s", d.ComposeDir)
 	_ = os.RemoveAll(d.ComposeDir)
 
+	logger.Infof("Successfully removed deployment ID '%s' from store", id)
 	return e.db.DeleteDeployment(id)
 }
 
@@ -349,6 +377,7 @@ func (e *Engine) runCompose(ctx context.Context, dir string, args ...string) err
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	logger.Debugf("Executing command: docker compose %s (working directory: %s)", strings.Join(args, " "), dir)
 	return cmd.Run()
 }
 

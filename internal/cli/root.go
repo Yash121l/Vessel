@@ -6,8 +6,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/Yash121l/Vessel/internal/config"
+	"github.com/Yash121l/Vessel/internal/logger"
 	"github.com/Yash121l/Vessel/internal/server"
 )
+
+var debug bool
 
 var rootCmd = &cobra.Command{
 	Use:   "vessel",
@@ -24,6 +27,8 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
 		}
+		logger.Init(debug, cfg.DataDir)
+		defer logger.Close()
 		return server.Start(cfg, Version)
 	},
 }
@@ -36,6 +41,8 @@ var bootstrapCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
 		}
+		logger.Init(debug, cfg.DataDir)
+		defer logger.Close()
 		return runBootstrap(cfg)
 	},
 }
@@ -48,6 +55,10 @@ var versionCmd = &cobra.Command{
 	},
 }
 
+func init() {
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug logging to file")
+}
+
 func Execute() {
 	rootCmd.AddCommand(serveCmd, bootstrapCmd, versionCmd, updateCmd)
 	if err := rootCmd.Execute(); err != nil {
@@ -55,3 +66,4 @@ func Execute() {
 		os.Exit(1)
 	}
 }
+

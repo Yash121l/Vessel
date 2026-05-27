@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/Yash121l/Vessel/internal/logger"
 )
 
 // Deployment represents a deployed application instance.
@@ -25,8 +27,10 @@ type Deployment struct {
 
 // CreateDeployment inserts a new deployment record.
 func (db *DB) CreateDeployment(d *Deployment) error {
+	logger.Infof("Creating store database record for deployment '%s'...", d.Name)
 	tx, err := db.Begin()
 	if err != nil {
+		logger.Errorf("failed to start database transaction for CreateDeployment: %v", err)
 		return err
 	}
 	defer tx.Rollback()
@@ -126,33 +130,49 @@ func (db *DB) ListDeployments() ([]*Deployment, error) {
 
 // UpdateDeploymentStatus updates the status field.
 func (db *DB) UpdateDeploymentStatus(id, status string) error {
+	logger.Debugf("Updating database deployment ID '%s' status to '%s'...", id, status)
 	_, err := db.Exec(`UPDATE deployments SET status = ? WHERE id = ?`, status, id)
+	if err != nil {
+		logger.Errorf("failed to update status: %v", err)
+	}
 	return err
 }
 
 // UpdateDeploymentDomain updates the domain field.
 func (db *DB) UpdateDeploymentDomain(id, domain string) error {
+	logger.Debugf("Updating database deployment ID '%s' domain to '%s'...", id, domain)
 	_, err := db.Exec(`UPDATE deployments SET domain = ? WHERE id = ?`, domain, id)
+	if err != nil {
+		logger.Errorf("failed to update domain: %v", err)
+	}
 	return err
 }
 
 // UpdateContainerID updates the container_id for an imported deployment.
 func (db *DB) UpdateContainerID(id, containerID string) error {
+	logger.Debugf("Updating database deployment ID '%s' container_id to '%s'...", id, containerID)
 	_, err := db.Exec(`UPDATE deployments SET container_id = ? WHERE id = ?`, containerID, id)
+	if err != nil {
+		logger.Errorf("failed to update container_id: %v", err)
+	}
 	return err
 }
 
 // DeleteDeployment removes a deployment and its env vars.
 func (db *DB) DeleteDeployment(id string) error {
+	logger.Infof("Deleting database deployment record for ID '%s'...", id)
 	tx, err := db.Begin()
 	if err != nil {
+		logger.Errorf("failed to start database transaction for DeleteDeployment: %v", err)
 		return err
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(`DELETE FROM deployment_env WHERE deployment_id = ?`, id); err != nil {
+		logger.Errorf("failed to delete env: %v", err)
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM deployments WHERE id = ?`, id); err != nil {
+		logger.Errorf("failed to delete deployment: %v", err)
 		return err
 	}
 	return tx.Commit()
@@ -160,17 +180,21 @@ func (db *DB) DeleteDeployment(id string) error {
 
 // UpdateDeploymentEnv replaces all env vars for a deployment.
 func (db *DB) UpdateDeploymentEnv(id string, env map[string]string) error {
+	logger.Infof("Replacing database environment variables for deployment ID '%s'...", id)
 	tx, err := db.Begin()
 	if err != nil {
+		logger.Errorf("failed to start database transaction for UpdateDeploymentEnv: %v", err)
 		return err
 	}
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(`DELETE FROM deployment_env WHERE deployment_id = ?`, id); err != nil {
+		logger.Errorf("failed to delete env: %v", err)
 		return err
 	}
 	for k, v := range env {
 		if _, err := tx.Exec(`INSERT INTO deployment_env (deployment_id, key, value) VALUES (?, ?, ?)`, id, k, v); err != nil {
+			logger.Errorf("failed to insert env '%s': %v", k, err)
 			return err
 		}
 	}

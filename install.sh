@@ -3,7 +3,21 @@
 # Usage: curl -sSL https://raw.githubusercontent.com/Yash121l/Vessel/main/install.sh | sudo bash
 set -euo pipefail
 
-VESSEL_VERSION="${VESSEL_VERSION:-0.1.0}"
+# Dynamically fetch the latest release tag from GitHub if not specified
+if [[ -z "${VESSEL_VERSION:-}" ]]; then
+  # Try to fetch latest tag name, e.g. "v1.1.5"
+  LATEST_TAG=$(curl -fsSL https://api.github.com/repos/Yash121l/Vessel/releases/latest | grep '"tag_name":' | cut -d'"' -f4 || true)
+  if [[ -n "$LATEST_TAG" ]]; then
+    # Strip leading 'v' if present
+    VESSEL_VERSION="${LATEST_TAG#v}"
+  else
+    VESSEL_VERSION="1.1.5"
+  fi
+else
+  # If specified via env, strip leading 'v' as well
+  VESSEL_VERSION="${VESSEL_VERSION#v}"
+fi
+
 VESSEL_PORT="${VESSEL_PORT:-4800}"
 VESSEL_DATA_DIR="${VESSEL_DATA_DIR:-/var/lib/vessel}"
 VESSEL_CONFIG_DIR="/etc/vessel"

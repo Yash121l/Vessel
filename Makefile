@@ -1,5 +1,5 @@
 BINARY     := vessel
-VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.1.0")
+VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo "1.1.5")
 GOFLAGS    := -mod=mod
 LDFLAGS    := -ldflags="-s -w -X github.com/Yash121l/Vessel/internal/cli.Version=$(VERSION)"
 BUILD_DIR  := dist

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+
+	"github.com/Yash121l/Vessel/internal/logger"
 )
 
 // Manager handles Caddy reverse proxy configuration.
@@ -23,15 +25,19 @@ func NewManager(caddyDir string) *Manager {
 // It writes a placeholder .caddy file so the glob import never fails on an
 // empty directory.
 func (m *Manager) EnsureMainConfig() error {
+	logger.Infof("Ensuring Caddy reverse proxy main configuration is written...")
 	sitesDir := m.sitesDir()
 	if err := os.MkdirAll(sitesDir, 0755); err != nil {
+		logger.Errorf("failed to create sites directory %s: %v", sitesDir, err)
 		return err
 	}
 
 	// Write a no-op placeholder so the glob always matches at least one file
 	placeholder := filepath.Join(sitesDir, "_placeholder.caddy")
 	if _, err := os.Stat(placeholder); os.IsNotExist(err) {
+		logger.Infof("Creating Caddy placeholder config at %s", placeholder)
 		if err := os.WriteFile(placeholder, []byte("# Vessel placeholder\n"), 0644); err != nil {
+			logger.Errorf("failed to write placeholder Caddy config: %v", err)
 			return err
 		}
 	}
@@ -39,6 +45,7 @@ func (m *Manager) EnsureMainConfig() error {
 	// Write to /etc/caddy/Caddyfile (where Caddy's systemd unit looks by default)
 	etcCaddyfile := "/etc/caddy/Caddyfile"
 	if err := os.MkdirAll(filepath.Dir(etcCaddyfile), 0755); err != nil {
+		logger.Errorf("failed to create etc Caddy directory: %v", err)
 		return err
 	}
 
@@ -46,11 +53,14 @@ func (m *Manager) EnsureMainConfig() error {
 	existing, _ := os.ReadFile(etcCaddyfile)
 	if len(existing) > 0 && !strings.Contains(string(existing), "Vessel-managed") {
 		// User has a custom Caddyfile — don't touch it
+		logger.Infof("Existing custom Caddyfile detected at %s. Skipping modification.", etcCaddyfile)
 		return nil
 	}
 
 	content := fmt.Sprintf("# Vessel-managed Caddyfile\n# Do not edit manually\n\nimport %s/*.caddy\n", sitesDir)
+	logger.Infof("Writing Vessel-managed Caddyfile config to %s", etcCaddyfile)
 	if err := os.WriteFile(etcCaddyfile, []byte(content), 0644); err != nil {
+		logger.Errorf("failed to write Caddyfile: %v", err)
 		return err
 	}
 
@@ -61,7 +71,9 @@ func (m *Manager) EnsureMainConfig() error {
 
 // AddRoute creates a Caddy site config for a deployment.
 func (m *Manager) AddRoute(domain string, internalPort int, deploymentName string) error {
+	logger.Infof("Adding proxy route for domain '%s' targeting port '%d' (deployment: %s)...", domain, internalPort, deploymentName)
 	if err := os.MkdirAll(m.sitesDir(), 0755); err != nil {
+		logger.Errorf("failed to create sites directory: %v", err)
 		return err
 	}
 
@@ -73,10 +85,14 @@ func (m *Manager) AddRoute(domain string, internalPort int, deploymentName strin
 
 	content, err := renderSiteConfig(cfg)
 	if err != nil {
+		logger.Errorf("failed to render site config template: %v", err)
 		return err
 	}
 
-	if err := os.WriteFile(m.sitePath(domain), []byte(content), 0644); err != nil {
+	dest := m.sitePath(domain)
+	logger.Debugf("Writing site config file at %s", dest)
+	if err := os.WriteFile(dest, []byte(content), 0644); err != nil {
+		logger.Errorf("failed to write site config file to %s: %v", dest, err)
 		return err
 	}
 
@@ -85,8 +101,10 @@ func (m *Manager) AddRoute(domain string, internalPort int, deploymentName strin
 
 // RemoveRoute deletes a Caddy site config.
 func (m *Manager) RemoveRoute(domain string) error {
+	logger.Infof("Removing proxy route for domain '%s'...", domain)
 	path := m.sitePath(domain)
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		logger.Errorf("failed to delete site config at %s: %v", path, err)
 		return err
 	}
 	return m.reload()
@@ -94,12 +112,19 @@ func (m *Manager) RemoveRoute(domain string) error {
 
 // reload signals Caddy to reload its configuration gracefully.
 func (m *Manager) reload() error {
+	logger.Infof("Reloading Caddy configuration...")
 	// Try caddy reload first
 	if err := exec.Command("caddy", "reload", "--config", "/etc/caddy/Caddyfile").Run(); err == nil {
+		logger.Infof("Caddy reloaded successfully using 'caddy reload'")
 		return nil
 	}
 	// Fall back to systemctl reload
-	return exec.Command("systemctl", "reload", "caddy").Run()
+	if err := exec.Command("systemctl", "reload", "caddy").Run(); err == nil {
+		logger.Infof("Caddy reloaded successfully using 'systemctl reload caddy'")
+		return nil
+	}
+	logger.Errorf("Caddy configuration reload failed")
+	return fmt.Errorf("caddy reload failed")
 }
 
 func (m *Manager) sitesDir() string {

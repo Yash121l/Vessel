@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Yash121l/Vessel/internal/logger"
 )
 
 // Common nginx config paths across distros.
@@ -201,18 +203,24 @@ func (m *Manager) CreateSiteForDeployment(name, serverName string, port int, ups
 // ConfigureSiteForDeployment creates, enables, validates, and reloads an nginx
 // reverse proxy site for a Vessel deployment.
 func (m *Manager) ConfigureSiteForDeployment(name, serverName string, port int, upstream, deploymentName string) error {
+	logger.Infof("Configuring Nginx reverse proxy site '%s' for deployment '%s' (domain: %s)...", name, deploymentName, serverName)
 	if err := m.CreateSiteForDeployment(name, serverName, port, upstream, deploymentName); err != nil {
+		logger.Errorf("failed to create Nginx site config: %v", err)
 		return err
 	}
 	if err := m.EnableSite(name); err != nil {
+		logger.Errorf("failed to enable Nginx site config: %v", err)
 		return fmt.Errorf("enable site: %w", err)
 	}
 	if out, ok := m.TestConfig(); !ok {
+		logger.Errorf("Nginx configuration test failed: %s", out)
 		return fmt.Errorf("nginx config test failed: %s", strings.TrimSpace(out))
 	}
 	if err := m.Reload(); err != nil {
+		logger.Errorf("failed to reload Nginx: %v", err)
 		return fmt.Errorf("reload nginx: %w", err)
 	}
+	logger.Infof("Successfully configured Nginx site '%s'", name)
 	return nil
 }
 
@@ -224,7 +232,9 @@ func (m *Manager) ObtainCertificate(domain string) error {
 	if domain == "" {
 		return nil
 	}
+	logger.Infof("Requesting Let's Encrypt SSL certificate for domain %s via Certbot Nginx plugin...", domain)
 	if _, err := exec.LookPath("certbot"); err != nil {
+		logger.Errorf("Certbot executable not found in PATH")
 		return fmt.Errorf("certbot not found: %w", err)
 	}
 	cmd := exec.Command(
@@ -237,8 +247,10 @@ func (m *Manager) ObtainCertificate(domain string) error {
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		logger.Errorf("Certbot SSL generation failed: %s: %v", strings.TrimSpace(string(out)), err)
 		return fmt.Errorf("certbot failed: %s", strings.TrimSpace(string(out)))
 	}
+	logger.Infof("Let's Encrypt SSL certificate obtained successfully for domain %s", domain)
 	return nil
 }
 
@@ -317,7 +329,9 @@ func (m *Manager) TestConfig() (string, bool) {
 
 // Reload sends SIGHUP to nginx (graceful reload).
 func (m *Manager) Reload() error {
+	logger.Infof("Reloading Nginx service config...")
 	if err := exec.Command("systemctl", "reload", "nginx").Run(); err != nil {
+		logger.Debugf("systemctl reload failed, falling back to nginx -s reload...")
 		// Fallback: nginx -s reload
 		return exec.Command("nginx", "-s", "reload").Run()
 	}
@@ -326,7 +340,9 @@ func (m *Manager) Reload() error {
 
 // Restart restarts nginx.
 func (m *Manager) Restart() error {
+	logger.Infof("Restarting Nginx service...")
 	if err := exec.Command("systemctl", "restart", "nginx").Run(); err != nil {
+		logger.Debugf("systemctl restart failed, falling back to stop and start...")
 		return exec.Command("nginx", "-s", "stop").Run()
 	}
 	return nil
@@ -334,11 +350,13 @@ func (m *Manager) Restart() error {
 
 // Stop stops nginx.
 func (m *Manager) Stop() error {
+	logger.Infof("Stopping Nginx service...")
 	return exec.Command("systemctl", "stop", "nginx").Run()
 }
 
 // Start starts nginx.
 func (m *Manager) Start() error {
+	logger.Infof("Starting Nginx service...")
 	return exec.Command("systemctl", "start", "nginx").Run()
 }
 
