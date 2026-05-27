@@ -171,7 +171,7 @@ function imgAvatar(image,size){
 const API='/api/v1';
 let S={
   authReady:false,configured:false,authenticated:false,authMode:'login',currentUser:null,users:[],
-  page:'containers',nginxTab:'overview',deployTab:'templates',selectedApp:null,composeId:null,composeDetail:null,
+  page:'containers',nginxTab:'overview',deployTab:'templates',selectedApp:null,selectedDeployment:null,composeId:null,composeDetail:null,
   deployments:[],apps:[],containers:[],composeStacks:[],
   nginxStatus:null,nginxSites:[],nginxMainConfig:'',nginxLogs:[],nginxStats:null,
   editingSite:null,editingContent:'',newSiteMode:false,
@@ -222,11 +222,12 @@ async function boot(){
     if(!meRes.ok){set({authReady:true,configured:true,authenticated:false,authMode:'login'});return}
     const meData=await meRes.json();
     S.configured=true;S.authReady=true;S.authenticated=true;S.currentUser=meData.user;S.serverVersion=meData.version||'';render();
-    // Restore auto-refresh preference from localStorage
+    await load();
+    // Restore auto-refresh preference from localStorage for the initial Apps page.
     if(localStorage.getItem('vessel-autorefresh')==='1'){
       S.autoRefreshEnabled=true;
+      S.autoRefreshTimer=setInterval(load,5000);
     }
-    await load();
   }catch(e){set({authReady:true,configured:true,authenticated:false,authMode:'login',error:e.message})}
 }
 async function authSubmit(e){
@@ -251,17 +252,21 @@ async function loadUsers(){
   try{const d=await api('GET','/users');set({users:d.users||[]})}catch(e){set({error:e.message})}
 }
 async function load(){
+  const showLoading=!S.containers.length&&!S.deployments.length;
+  if(showLoading){S.loading=true;render();}
   try{
     const[dc,dd,aa]=await Promise.all([api('GET','/docker/containers'),api('GET','/deployments'),api('GET','/apps')]);
-    set({containers:dc.containers||[],deployments:dd.deployments||[],apps:aa.apps||[]});
-  }catch(e){set({error:e.message})}
+    set({containers:dc.containers||[],deployments:dd.deployments||[],apps:aa.apps||[],loading:false});
+  }catch(e){set({error:e.message,loading:false})}
 }
 async function loadApps(){try{const d=await api('GET','/apps');set({apps:d.apps||[]})}catch(e){set({error:e.message})}}
 async function loadNginx(){
+  const showLoading=!S.nginxStatus;
+  if(showLoading){S.loading=true;render();}
   try{
     const[st,si,stats]=await Promise.all([api('GET','/nginx/status'),api('GET','/nginx/sites'),api('GET','/nginx/stats')]);
-    set({nginxStatus:st,nginxSites:si.sites||[],nginxStats:stats});
-  }catch(e){set({error:'nginx: '+e.message})}
+    set({nginxStatus:st,nginxSites:si.sites||[],nginxStats:stats,loading:false});
+  }catch(e){set({error:'nginx: '+e.message,loading:false})}
 }
 async function loadNginxConfig(){try{const d=await api('GET','/nginx/config');set({nginxMainConfig:d.content})}catch(e){set({error:e.message})}}
 async function loadNginxLogs(t){try{const d=await api('GET','/nginx/logs/'+t);set({nginxLogs:d.lines||[]})}catch(e){set({error:e.message})}}
@@ -285,10 +290,12 @@ async function removeExternalStack(name){
   }catch(e){set({error:e.message})}
 }
 async function loadComposeStacks(){
+  const showLoading=!S.composeStacks.length&&!S.deployments.length;
+  if(showLoading){S.loading=true;render();}
   try{
     const[dd,ds]=await Promise.all([api('GET','/deployments'),api('GET','/docker/compose/stacks')]);
-    set({deployments:dd.deployments||[],composeStacks:ds.stacks||[]});
-  }catch(e){set({error:e.message})}
+    set({deployments:dd.deployments||[],composeStacks:ds.stacks||[],loading:false});
+  }catch(e){set({error:e.message,loading:false})}
 }
 async function act(id,a){
   if(a==='stop'&&!confirm('Stop this deployment?'))return;
@@ -432,6 +439,7 @@ function openNginxLogs(type){
 }
 function nav(p){
   if(S.logsEs&&p!=='logs'){S.logsEs.close();S.logsEs=null}
+  if(S.autoRefreshTimer)stopAutoRefresh();
   set({page:p,error:null,editingSite:null,newSiteMode:false,composeDetail:null,composeId:null});
   if(p==='containers')load();
   if(p==='deploy')loadApps();
@@ -439,7 +447,7 @@ function nav(p){
   if(p==='nginx'){loadNginx();loadNginxConfig();}
   if(p==='compose')loadComposeStacks();
 }
-function badge(s){return'<span class="tag tag-'+(s||'stopped')+'"><span class="dot'+(s==='running'||s==='active'?' pulse':'')+'"></span>'+(s||'unknown')+'</span>'}
+function badge(s){return statusTag(s)}
 function fmtBytes(b){if(!b)return'0 B';if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';if(b<1073741824)return(b/1048576).toFixed(1)+' MB';return(b/1073741824).toFixed(2)+' GB'}
 function fmtPulls(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return n}
 function statusColor(code){const c=parseInt(code);if(c>=500)return'var(--red)';if(c>=400)return'var(--yellow)';if(c>=300)return'var(--blue)';return'var(--green)'}
@@ -490,17 +498,22 @@ function dnsGuidanceBox(domain){
   const ip=S.systemIP||'\u2026';
   return'<div style="background:var(--blue-dim);border:1px solid var(--blue);border-radius:var(--r);padding:12px 14px;margin-top:8px;font-size:12px">'+
     '<div style="font-weight:600;color:var(--blue);margin-bottom:8px">'+
-      ico('globe',13,'var(--blue)')+' DNS Configuration'+
+      ico('globe',13,'var(--blue)')+' DNS & SSL readiness'+
     '</div>'+
+    '<div style="color:var(--muted2);margin-bottom:10px">Point this hostname at your Vessel server before deploying. Vessel will enable nginx and then request a Let&rsquo;s Encrypt certificate.</div>'+
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
-      '<span style="color:var(--muted);width:60px">A record</span>'+
+      '<span style="color:var(--muted);width:82px">A record</span>'+
+      '<code style="background:var(--surface2);padding:3px 8px;border-radius:4px">'+escHtml(domain)+'</code>'+
+      '<span style="color:var(--muted)">to</span>'+
       '<code style="flex:1;background:var(--surface2);padding:3px 8px;border-radius:4px">'+escHtml(ip)+'</code>'+
       '<button class="btn btn-xs" onclick="copyVal(\''+escAttr(ip)+'\',this)">Copy</button>'+
     '</div>'+
     '<div style="display:flex;align-items:center;gap:8px">'+
-      '<span style="color:var(--muted);width:60px">CNAME</span>'+
+      '<span style="color:var(--muted);width:82px">Optional CNAME</span>'+
+      '<code style="background:var(--surface2);padding:3px 8px;border-radius:4px">www</code>'+
+      '<span style="color:var(--muted)">to</span>'+
       '<code style="flex:1;background:var(--surface2);padding:3px 8px;border-radius:4px">'+escHtml(domain)+'</code>'+
-      '<button class="btn btn-xs" onclick="copyVal(\''+escAttr(domain)+'\',this)">Copy</button>'+
+      '<button class="btn btn-xs" onclick="copyVal(\''+escAttr(domain)+'\',this)">Copy target</button>'+
     '</div>'+
   '</div>';
 }
@@ -895,6 +908,7 @@ async function wizardSubmit(){
 }function toggleAutoRefresh(loadFn){
   const next=!S.autoRefreshEnabled;
   if(next){
+    if(S.autoRefreshTimer)clearInterval(S.autoRefreshTimer);
     const timer=setInterval(loadFn,5000);
     set({autoRefreshEnabled:true,autoRefreshTimer:timer});
   }else{
@@ -965,8 +979,8 @@ function render(){
         '</button>'+
       '</div>'+
     '</div></nav>';
-  const errBanner=S.error?'<div style="background:var(--red-dim);border:1px solid #ef444430;border-radius:var(--r);padding:10px 16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;gap:12px"><span style="color:var(--red);font-size:13px">'+S.error+'</span><button class="btn btn-xs" onclick="set({error:null})">✕</button></div>':'';
-  const pages={containers:pageContainers,compose:pageCompose,nginx:pageNginx,deploy:pageDeploy,logs:pageLogs,settings:pageSettings};
+  const errBanner=errorBanner(S.error);
+  const pages={containers:pageContainers,deployments:pageContainers,compose:pageCompose,nginx:pageNginx,deploy:pageDeploy,logs:pageLogs,settings:pageSettings};
   const content=(pages[S.page]||pageContainers)();
   document.getElementById('app').innerHTML=
     sidebar+
@@ -991,6 +1005,7 @@ function authPage(){
 }
 // ── Apps page ─────────────────────────────────────────────────────────────────
 function pageContainers(){
+  if(S.loading)return loadingSpinner('Loading apps...');
   const managed=S.deployments.filter(d=>!d.imported);
   const imported=S.deployments.filter(d=>d.imported);
   const trackedIds=new Set();const trackedNames=new Set();
@@ -1019,11 +1034,7 @@ function pageContainers(){
   if(uRun.length)h+=section('Running — click Monitor to track',uRun.length,uRun.map(cardDiscovered).join(''));
   if(uStop.length)h+=section('Stopped / Exited',uStop.length,uStop.map(cardDiscovered).join(''),0);
   if(!managed.length&&!imported.length&&!untracked.length){
-    h+='<div style="text-align:center;padding:80px 20px">'+
-      '<div style="display:flex;justify-content:center;margin-bottom:16px;color:var(--muted)">'+ico('rocket',48)+'</div>'+
-      '<div style="font-size:18px;font-weight:600;margin-bottom:8px">No containers yet</div>'+
-      '<div style="color:var(--muted);margin-bottom:24px">Deploy your first self-hosted app in seconds</div>'+
-      '<button class="btn-primary" onclick="nav(\'deploy\')">Deploy an app</button></div>';
+    h+=emptyState('rocket','No containers yet','Deploy an app',"nav('deploy')");
   }
   return h;
 }
@@ -1082,6 +1093,7 @@ function cardDiscovered(c){
 }
 // ── Compose page ──────────────────────────────────────────────────────────────
 function pageCompose(){
+  if(S.loading)return loadingSpinner('Loading compose stacks...');
   const managed=S.deployments.filter(d=>!d.imported&&d.compose_dir);
   const dbNames=new Set(managed.map(d=>d.name));
   const externalStacks=(S.composeStacks||[]).filter(s=>!dbNames.has(s.name));
@@ -1150,11 +1162,7 @@ function pageCompose(){
       '<button class="btn btn-sm" onclick="loadComposeStacks()" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
     '</div>'+
     (totalStacks===0?
-      '<div style="text-align:center;padding:80px 20px">'+
-        '<div style="display:flex;justify-content:center;margin-bottom:16px;color:var(--muted)">'+ico('layers',48)+'</div>'+
-        '<div style="font-size:18px;font-weight:600;margin-bottom:8px">No compose stacks yet</div>'+
-        '<div style="color:var(--muted);margin-bottom:24px">Deploy an app to see its compose stack here</div>'+
-        '<button class="btn-primary" onclick="nav(\'deploy\')">Deploy an app</button></div>':
+      emptyState('layers','No compose stacks yet','Deploy an app',"nav('deploy')"):
       '<div style="display:grid;gap:12px">'+
       managed.map(d=>{
         const r=d.status==='running';
@@ -1436,6 +1444,8 @@ function removeSidecarPort(i,j){
   render();
 }
 function updateSidecarPort(i,j,field,val){
+  S.csSidecars[i].ports=S.csSidecars[i].ports||[];
+  if(!S.csSidecars[i].ports[j])S.csSidecars[i].ports[j]={internal:'',external:'',protocol:'tcp'};
   S.csSidecars[i].ports[j][field]=val;
 }
 function deployComposeForm(){
@@ -1452,6 +1462,25 @@ function deployComposeForm(){
       '</div>'+
       '<div class="fg"><label>Environment Variables (KEY=VALUE, one per line)</label>'+
         '<textarea rows="3" placeholder="POSTGRES_DB=myapp&#10;POSTGRES_USER=app&#10;POSTGRES_PASSWORD=secret" style="font-family:var(--mono);font-size:12px" oninput="S.csSidecars['+i+'].env=this.value">'+escHtml(s.env||'')+'</textarea></div>'+
+      '<div class="fg">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+          '<label style="margin:0">Port Mappings</label>'+
+          '<button type="button" class="btn btn-xs" onclick="addSidecarPort('+i+')">+ Add Port</button>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:5px">'+
+        ((s.ports&&s.ports.length?s.ports:[{internal:"",external:"",protocol:"tcp"}]).map((p,pi)=>
+          '<div style="display:flex;gap:6px;align-items:center">'+
+            '<input placeholder="Container port" value="'+escHtml(p.internal)+'" oninput="updateSidecarPort('+i+','+pi+',\'internal\',this.value)" style="width:130px">'+
+            '<span style="color:var(--muted);flex-shrink:0;font-size:12px">to host</span>'+
+            '<input placeholder="Host port" value="'+escHtml(p.external)+'" oninput="updateSidecarPort('+i+','+pi+',\'external\',this.value)" style="width:130px">'+
+            '<select oninput="updateSidecarPort('+i+','+pi+',\'protocol\',this.value)" style="width:80px">'+
+              '<option value="tcp"'+((p.protocol||'tcp')==='tcp'?' selected':'')+'>tcp</option>'+
+              '<option value="udp"'+(p.protocol==='udp'?' selected':'')+'>udp</option>'+
+            '</select>'+
+            ((s.ports||[]).length>1?'<button type="button" class="btn-danger btn-xs" onclick="removeSidecarPort('+i+','+pi+')">x</button>':'')+
+          '</div>'
+        ).join(''))+
+        '</div></div>'+
       '<div class="fg">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
           '<label style="margin:0">Volumes</label>'+
@@ -1553,7 +1582,8 @@ async function deployComposeStack(e){
     const env={};
     (s.env||'').trim().split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)env[l.slice(0,i).trim()]=l.slice(i+1).trim()});
     const vols=(s.volumes||[]).filter(v=>v.mount).map(v=>({name:v.name||v.mount.replace(/\//g,'-').replace(/^-/,''),mount_path:v.mount}));
-    const sc={name:s.name,image:s.image,environment:env,volumes:vols};
+    const sidePorts=(s.ports||[]).filter(p=>p.internal).map(p=>({internal:parseInt(p.internal),external:parseInt(p.external||p.internal),protocol:p.protocol||'tcp'}));
+    const sc={name:s.name,image:s.image,environment:env,volumes:vols,ports:sidePorts};
     if(s.healthTest&&s.healthTest.trim()){
       const parts=s.healthTest.trim().split(/\s+/);
       sc.health_check={test:parts,interval:'10s',timeout:'5s',retries:5};
@@ -1572,6 +1602,7 @@ async function deployComposeStack(e){
 }
 // ── Nginx page ────────────────────────────────────────────────────────────────
 function pageNginx(){
+  if(S.loading)return loadingSpinner('Loading nginx...');
   const st=S.nginxStatus;const stats=S.nginxStats;
   const header='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">'+
     '<div><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Nginx</h1>'+
@@ -1582,6 +1613,7 @@ function pageNginx(){
       '<button class="btn btn-sm" onclick="ngxAction(\'reload\')">Reload</button>'+
       '<button class="btn btn-sm" onclick="ngxAction(\'restart\')">Restart</button>'+
       (st&&st.running?'<button class="btn-danger btn-sm" onclick="ngxAction(\'stop\')">Stop</button>':'<button class="btn-success btn-sm" onclick="ngxAction(\'start\')">Start</button>')+
+      autoRefreshToggle(loadNginx)+
       '<button class="btn btn-sm" onclick="loadNginx()" style="display:flex;align-items:center">'+ico('refresh-cw',12)+'</button>'+
     '</div></div>';
   const tabs=['overview','sites','config','logs'].map(t=>
@@ -1707,7 +1739,7 @@ function nginxSitesTab(){
     '<div style="display:flex;justify-content:flex-end;margin-bottom:16px">'+
       '<button class="btn-primary btn-sm" onclick="set({newSiteMode:true})">+ New Site</button>'+
     '</div>'+
-    (sites.length===0?'<div class="card" style="text-align:center;padding:40px;color:var(--muted)">No site configs found</div>':
+    (sites.length===0?emptyState('globe','No site configs found','New Site','set({newSiteMode:true})'):
       '<div style="display:grid;gap:8px">'+
       sites.map(s=>'<div class="card" style="padding:14px 18px">'+
         '<div style="display:flex;align-items:center;gap:12px">'+
@@ -1715,6 +1747,7 @@ function nginxSitesTab(){
             '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
               '<span style="font-weight:600;font-size:13px;font-family:var(--mono)">'+s.name+'</span>'+
               (s.enabled?'<span class="tag tag-active">enabled</span>':'<span class="tag tag-stopped">disabled</span>')+
+              (s.vessel_deployment?'<button class="tag tag-imported" title="Open deployment" onclick="event.stopPropagation();set({page:\'deployments\',selectedDeployment:\''+escAttr(s.vessel_deployment)+'\'})" style="border:none;cursor:pointer">'+escHtml(s.vessel_deployment)+'</button>':'')+
             '</div>'+
             '<div style="color:var(--muted);font-size:11px;margin-top:3px">'+s.path+'</div>'+
           '</div>'+

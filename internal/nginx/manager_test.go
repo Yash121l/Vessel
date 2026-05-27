@@ -77,7 +77,20 @@ func TestCreateSiteForDeployment(t *testing.T) {
 			if !strings.Contains(content, tt.serverName) {
 				t.Errorf("content does not contain server_name %q", tt.serverName)
 			}
+			if !strings.Contains(content, "location /.well-known/acme-challenge/") {
+				t.Errorf("content does not contain ACME challenge location: %q", content)
+			}
+			if !strings.Contains(content, "proxy_pass http://127.0.0.1:") && tt.upstream == "" {
+				t.Errorf("content does not proxy to localhost loopback: %q", content)
+			}
 		})
+	}
+}
+
+func TestBuildSiteConfigUsesExplicitUpstream(t *testing.T) {
+	content := buildSiteConfig("app.example.com", 8080, "unix:/run/app.sock")
+	if !strings.Contains(content, "proxy_pass http://unix:/run/app.sock;") {
+		t.Fatalf("buildSiteConfig did not use explicit upstream: %q", content)
 	}
 }
 

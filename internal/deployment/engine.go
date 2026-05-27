@@ -122,15 +122,13 @@ func (e *Engine) Deploy(ctx context.Context, req DeployRequest) (*store.Deployme
 
 	// Configure reverse proxy if domain is set
 	if req.Domain != "" {
-		if err := e.proxy.AddRoute(req.Domain, proxyTargetPort(tmpl), req.Name); err != nil {
-			// Non-fatal: deployment is running, proxy config failed
-			fmt.Printf("warning: proxy config failed: %v\n", err)
-		}
-		// Create nginx site config tagged with the deployment name
 		siteName := req.Name + ".conf"
-		if err := e.nginx.CreateSiteForDeployment(siteName, req.Domain, proxyTargetPort(tmpl), "", req.Name); err != nil {
-			// Non-fatal: deployment is running, nginx site creation failed
-			fmt.Printf("warning: nginx site creation failed: %v\n", err)
+		if err := e.nginx.ConfigureSiteForDeployment(siteName, req.Domain, proxyTargetPort(tmpl), "", req.Name); err != nil {
+			// Non-fatal: deployment is running, nginx config failed.
+			fmt.Printf("warning: nginx site configuration failed: %v\n", err)
+		} else if err := e.nginx.ObtainCertificate(req.Domain); err != nil {
+			// Non-fatal: DNS may not have propagated or certbot may not be installed.
+			fmt.Printf("warning: let's encrypt certificate setup failed: %v\n", err)
 		}
 	}
 

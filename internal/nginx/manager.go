@@ -198,6 +198,50 @@ func (m *Manager) CreateSiteForDeployment(name, serverName string, port int, ups
 	return m.SaveSite(name, content)
 }
 
+// ConfigureSiteForDeployment creates, enables, validates, and reloads an nginx
+// reverse proxy site for a Vessel deployment.
+func (m *Manager) ConfigureSiteForDeployment(name, serverName string, port int, upstream, deploymentName string) error {
+	if err := m.CreateSiteForDeployment(name, serverName, port, upstream, deploymentName); err != nil {
+		return err
+	}
+	if err := m.EnableSite(name); err != nil {
+		return fmt.Errorf("enable site: %w", err)
+	}
+	if out, ok := m.TestConfig(); !ok {
+		return fmt.Errorf("nginx config test failed: %s", strings.TrimSpace(out))
+	}
+	if err := m.Reload(); err != nil {
+		return fmt.Errorf("reload nginx: %w", err)
+	}
+	return nil
+}
+
+// ObtainCertificate asks certbot's nginx plugin to issue and install a
+// Let's Encrypt certificate for the domain. DNS must already point at this
+// host; certbot returns an error while DNS is still propagating.
+func (m *Manager) ObtainCertificate(domain string) error {
+	domain = strings.TrimSpace(domain)
+	if domain == "" {
+		return nil
+	}
+	if _, err := exec.LookPath("certbot"); err != nil {
+		return fmt.Errorf("certbot not found: %w", err)
+	}
+	cmd := exec.Command(
+		"certbot", "--nginx",
+		"-d", domain,
+		"--non-interactive",
+		"--agree-tos",
+		"--redirect",
+		"--register-unsafely-without-email",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("certbot failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // EnableSite enables a site config.
 // For sites-available files: creates a symlink in sites-enabled.
 // For conf.d files: renames .disabled → .conf.
@@ -407,11 +451,15 @@ func extractVesselDeployment(content string) string {
 // buildSiteConfig generates a basic reverse proxy nginx site config.
 func buildSiteConfig(serverName string, port int, upstream string) string {
 	if upstream == "" {
-		upstream = fmt.Sprintf("localhost:%d", port)
+		upstream = fmt.Sprintf("127.0.0.1:%d", port)
 	}
 	return fmt.Sprintf(`server {
     listen 80;
     server_name %s;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
 
     location / {
         proxy_pass http://%s;
