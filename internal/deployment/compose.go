@@ -177,6 +177,26 @@ func GenerateCompose(tmpl *registry.AppTemplate, d *store.Deployment, skipServic
 			mainSvc.DependsOn[svcName] = DependsOnCondition{Condition: "service_healthy"}
 		}
 
+		// Emit port mappings for the sidecar using the same host-binding logic
+		// as the primary service: bind to 127.0.0.1 when a domain is configured.
+		for _, p := range svc.Ports {
+			proto := p.Protocol
+			if proto == "" {
+				proto = "tcp"
+			}
+			external := p.External
+			if external == 0 {
+				external = p.Internal
+			}
+			if d.Domain != "" {
+				extraSvc.Ports = append(extraSvc.Ports,
+					fmt.Sprintf("127.0.0.1:%d:%d/%s", external, p.Internal, proto))
+			} else {
+				extraSvc.Ports = append(extraSvc.Ports,
+					fmt.Sprintf("%d:%d/%s", external, p.Internal, proto))
+			}
+		}
+
 		cf.Services[svcName] = extraSvc
 
 		// Rewrite env vars in main service that reference the bare sidecar name

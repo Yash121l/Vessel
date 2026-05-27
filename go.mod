@@ -1,6 +1,6 @@
 module github.com/Yash121l/Vessel
 
-go 1.22
+go 1.23
 
 require (
 	github.com/gin-gonic/gin v1.10.0
@@ -44,4 +44,5 @@ require (
 	modernc.org/libc v1.50.9 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.8.0 // indirect
+	pgregory.net/rapid v1.1.0 // indirect
 )

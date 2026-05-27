@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -97,6 +98,9 @@ func registerRoutes(
 
 	// Self-update
 	r.POST("/system/update", selfUpdate())
+
+	// System info
+	r.GET("/system/ip", systemIP())
 
 	// Nginx management
 	ngx := nginx.NewManager()
@@ -967,6 +971,17 @@ func createComposeDeployment(engine *deployment.Engine, reg *registry.Registry) 
 					MountPath: v.MountPath,
 				})
 			}
+			for _, p := range s.Ports {
+				proto := p.Protocol
+				if proto == "" {
+					proto = "tcp"
+				}
+				sdef.Ports = append(sdef.Ports, registry.Port{
+					Internal: p.Internal,
+					External: p.External,
+					Protocol: proto,
+				})
+			}
 			if s.HealthCheck != nil && len(s.HealthCheck.Test) > 0 {
 				sdef.HealthCheck = registry.HealthCheck{
 					Test:     s.HealthCheck.Test,
@@ -1304,4 +1319,47 @@ func nginxStreamLogs(ngx *nginx.Manager) gin.HandlerFunc {
 			}
 		})
 	}
+}
+
+// --- System info ---
+
+func systemIP() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ip := getPrimaryIPv4()
+		c.JSON(200, gin.H{"ip": ip})
+	}
+}
+
+// getPrimaryIPv4 returns the first non-loopback IPv4 address found on an
+// active network interface, or an empty string if none can be determined.
+func getPrimaryIPv4() string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			if ip4 := ip.To4(); ip4 != nil {
+				return ip4.String()
+			}
+		}
+	}
+	return ""
 }

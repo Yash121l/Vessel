@@ -74,6 +74,7 @@ type ServiceDef struct {
 	Environment map[string]string `yaml:"environment"  json:"environment"`
 	Volumes     []Volume          `yaml:"volumes"      json:"volumes"`
 	HealthCheck HealthCheck       `yaml:"health_check" json:"health_check"`
+	Ports       []Port            `yaml:"ports"        json:"ports"`
 	// Optional marks this service as opt-in. When true, the user can choose
 	// to skip it and provide their own external instance (e.g. an existing DB).
 	Optional bool `yaml:"optional" json:"optional"`

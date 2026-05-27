@@ -65,6 +65,159 @@ func TestProxyTargetPortUsesExternalPortForCaddy(t *testing.T) {
 	}
 }
 
+func TestGenerateComposeSidecarPortsWithDomain(t *testing.T) {
+	tmpl := &registry.AppTemplate{
+		ID:    "demo",
+		Name:  "Demo",
+		Image: "demo/app:latest",
+		ExtraServices: []registry.ServiceDef{
+			{
+				Name:  "demo-db",
+				Image: "postgres:16",
+				Ports: []registry.Port{
+					{Internal: 5432, External: 15432, Protocol: "tcp"},
+				},
+			},
+		},
+	}
+	deployment := &store.Deployment{Name: "demo-app", Domain: "demo.example.com"}
+
+	cf, err := GenerateCompose(tmpl, deployment, nil)
+	if err != nil {
+		t.Fatalf("GenerateCompose() error = %v", err)
+	}
+
+	sidecar, ok := cf.Services["demo-app-demo-db"]
+	if !ok {
+		t.Fatal("sidecar service not found in compose output")
+	}
+	if len(sidecar.Ports) != 1 || sidecar.Ports[0] != "127.0.0.1:15432:5432/tcp" {
+		t.Fatalf("sidecar ports = %#v, want localhost-bound port", sidecar.Ports)
+	}
+}
+
+func TestGenerateComposeSidecarPortsWithoutDomain(t *testing.T) {
+	tmpl := &registry.AppTemplate{
+		ID:    "demo",
+		Name:  "Demo",
+		Image: "demo/app:latest",
+		ExtraServices: []registry.ServiceDef{
+			{
+				Name:  "demo-db",
+				Image: "postgres:16",
+				Ports: []registry.Port{
+					{Internal: 5432, External: 15432, Protocol: "tcp"},
+				},
+			},
+		},
+	}
+	deployment := &store.Deployment{Name: "demo-app"}
+
+	cf, err := GenerateCompose(tmpl, deployment, nil)
+	if err != nil {
+		t.Fatalf("GenerateCompose() error = %v", err)
+	}
+
+	sidecar, ok := cf.Services["demo-app-demo-db"]
+	if !ok {
+		t.Fatal("sidecar service not found in compose output")
+	}
+	if len(sidecar.Ports) != 1 || sidecar.Ports[0] != "15432:5432/tcp" {
+		t.Fatalf("sidecar ports = %#v, want public host binding", sidecar.Ports)
+	}
+}
+
+func TestGenerateComposeSidecarPortsDefaultProtocol(t *testing.T) {
+	tmpl := &registry.AppTemplate{
+		ID:    "demo",
+		Name:  "Demo",
+		Image: "demo/app:latest",
+		ExtraServices: []registry.ServiceDef{
+			{
+				Name:  "demo-cache",
+				Image: "redis:7",
+				Ports: []registry.Port{
+					{Internal: 6379, External: 6379}, // no protocol set
+				},
+			},
+		},
+	}
+	deployment := &store.Deployment{Name: "demo-app"}
+
+	cf, err := GenerateCompose(tmpl, deployment, nil)
+	if err != nil {
+		t.Fatalf("GenerateCompose() error = %v", err)
+	}
+
+	sidecar, ok := cf.Services["demo-app-demo-cache"]
+	if !ok {
+		t.Fatal("sidecar service not found in compose output")
+	}
+	if len(sidecar.Ports) != 1 || sidecar.Ports[0] != "6379:6379/tcp" {
+		t.Fatalf("sidecar ports = %#v, want default tcp protocol", sidecar.Ports)
+	}
+}
+
+func TestGenerateComposeSidecarPortsExternalDefaultsToInternal(t *testing.T) {
+	tmpl := &registry.AppTemplate{
+		ID:    "demo",
+		Name:  "Demo",
+		Image: "demo/app:latest",
+		ExtraServices: []registry.ServiceDef{
+			{
+				Name:  "demo-db",
+				Image: "postgres:16",
+				Ports: []registry.Port{
+					{Internal: 5432, External: 0, Protocol: "tcp"}, // external=0 → use internal
+				},
+			},
+		},
+	}
+	deployment := &store.Deployment{Name: "demo-app"}
+
+	cf, err := GenerateCompose(tmpl, deployment, nil)
+	if err != nil {
+		t.Fatalf("GenerateCompose() error = %v", err)
+	}
+
+	sidecar, ok := cf.Services["demo-app-demo-db"]
+	if !ok {
+		t.Fatal("sidecar service not found in compose output")
+	}
+	if len(sidecar.Ports) != 1 || sidecar.Ports[0] != "5432:5432/tcp" {
+		t.Fatalf("sidecar ports = %#v, want external defaulting to internal port", sidecar.Ports)
+	}
+}
+
+func TestGenerateComposeSidecarNoPortsWhenEmpty(t *testing.T) {
+	tmpl := &registry.AppTemplate{
+		ID:    "demo",
+		Name:  "Demo",
+		Image: "demo/app:latest",
+		ExtraServices: []registry.ServiceDef{
+			{
+				Name:  "demo-db",
+				Image: "postgres:16",
+				// No Ports defined
+			},
+		},
+	}
+	deployment := &store.Deployment{Name: "demo-app"}
+
+	cf, err := GenerateCompose(tmpl, deployment, nil)
+	if err != nil {
+		t.Fatalf("GenerateCompose() error = %v", err)
+	}
+
+	sidecar, ok := cf.Services["demo-app-demo-db"]
+	if !ok {
+		t.Fatal("sidecar service not found in compose output")
+	}
+	if len(sidecar.Ports) != 0 {
+		t.Fatalf("sidecar ports = %#v, want empty ports slice", sidecar.Ports)
+	}
+}
+
 func TestGenerateComposeSkipsOptionalService(t *testing.T) {
 	tmpl := &registry.AppTemplate{
 		ID:    "demo",

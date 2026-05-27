@@ -2,7 +2,9 @@ package deployment
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/Yash121l/Vessel/internal/config"
 	"github.com/Yash121l/Vessel/internal/docker"
+	"github.com/Yash121l/Vessel/internal/nginx"
 	"github.com/Yash121l/Vessel/internal/proxy"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
@@ -25,6 +28,7 @@ type Engine struct {
 	db       *store.DB
 	registry *registry.Registry
 	proxy    *proxy.Manager
+	nginx    *nginx.Manager
 }
 
 // NewEngine creates a new deployment engine.
@@ -34,6 +38,7 @@ func NewEngine(cfg *config.Config, db *store.DB, reg *registry.Registry, prx *pr
 		db:       db,
 		registry: reg,
 		proxy:    prx,
+		nginx:    nginx.NewManager(),
 	}
 }
 
@@ -120,6 +125,12 @@ func (e *Engine) Deploy(ctx context.Context, req DeployRequest) (*store.Deployme
 		if err := e.proxy.AddRoute(req.Domain, proxyTargetPort(tmpl), req.Name); err != nil {
 			// Non-fatal: deployment is running, proxy config failed
 			fmt.Printf("warning: proxy config failed: %v\n", err)
+		}
+		// Create nginx site config tagged with the deployment name
+		siteName := req.Name + ".conf"
+		if err := e.nginx.CreateSiteForDeployment(siteName, req.Domain, proxyTargetPort(tmpl), "", req.Name); err != nil {
+			// Non-fatal: deployment is running, nginx site creation failed
+			fmt.Printf("warning: nginx site creation failed: %v\n", err)
 		}
 	}
 
@@ -244,6 +255,53 @@ func (e *Engine) Logs(ctx context.Context, id string, w io.Writer, follow bool) 
 	return cmd.Run()
 }
 
+// parseSyncStatusOutput parses the output of `docker compose ps --format json`
+// and returns the deployment status string ("running" or "stopped"), or an
+// empty string if the output is empty or unparseable (caller should leave
+// status unchanged in that case).
+//
+// The output may be a JSON array (newer Docker Compose) or NDJSON — one JSON
+// object per line (older versions). Both formats are handled.
+func parseSyncStatusOutput(out []byte) (status string, ok bool) {
+	out = bytes.TrimSpace(out)
+	if len(out) == 0 {
+		return "", false
+	}
+
+	type svcEntry struct {
+		State string `json:"State"`
+	}
+	var services []svcEntry
+
+	if out[0] == '[' {
+		if err := json.Unmarshal(out, &services); err != nil {
+			return "", false // unparseable — leave unchanged
+		}
+	} else {
+		// NDJSON: one JSON object per line
+		for _, line := range bytes.Split(out, []byte("\n")) {
+			line = bytes.TrimSpace(line)
+			if len(line) == 0 {
+				continue
+			}
+			var svc svcEntry
+			if err := json.Unmarshal(line, &svc); err != nil {
+				return "", false
+			}
+			services = append(services, svc)
+		}
+	}
+
+	result := "stopped"
+	for _, svc := range services {
+		if svc.State == "running" {
+			result = "running"
+			break
+		}
+	}
+	return result, true
+}
+
 // SyncStatus refreshes deployment status from Docker.
 func (e *Engine) SyncStatus(ctx context.Context, id string) error {
 	d, err := e.db.GetDeployment(id)
@@ -255,13 +313,12 @@ func (e *Engine) SyncStatus(ctx context.Context, id string) error {
 	cmd.Dir = d.ComposeDir
 	out, err := cmd.Output()
 	if err != nil {
-		return nil
+		return nil // leave status unchanged on error
 	}
 
-	// Simple heuristic: if output contains "running", mark as running
-	status := "stopped"
-	if len(out) > 10 {
-		status = "running"
+	status, ok := parseSyncStatusOutput(out)
+	if !ok {
+		return nil // empty or unparseable — leave unchanged
 	}
 	return e.db.UpdateDeploymentStatus(id, status)
 }

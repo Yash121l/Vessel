@@ -71,11 +71,12 @@ func (m *Manager) GetStatus() Status {
 
 // SiteFile represents an nginx site config file.
 type SiteFile struct {
-	Name    string    `json:"name"`
-	Path    string    `json:"path"`
-	Enabled bool      `json:"enabled"`
-	Content string    `json:"content,omitempty"`
-	ModTime time.Time `json:"mod_time"`
+	Name             string    `json:"name"`
+	Path             string    `json:"path"`
+	Enabled          bool      `json:"enabled"`
+	Content          string    `json:"content,omitempty"`
+	ModTime          time.Time `json:"mod_time"`
+	VesselDeployment string    `json:"vessel_deployment"`
 }
 
 // ListSites returns all site configs from sites-available and conf.d.
@@ -105,12 +106,16 @@ func (m *Manager) ListSites() ([]SiteFile, error) {
 				continue
 			}
 			info, _ := e.Info()
-			sites = append(sites, SiteFile{
+			sf := SiteFile{
 				Name:    e.Name(),
 				Path:    filepath.Join(available, e.Name()),
 				Enabled: enabledSet[e.Name()],
 				ModTime: info.ModTime(),
-			})
+			}
+			if data, err := os.ReadFile(filepath.Join(available, e.Name())); err == nil {
+				sf.VesselDeployment = extractVesselDeployment(string(data))
+			}
+			sites = append(sites, sf)
 		}
 	}
 
@@ -126,12 +131,16 @@ func (m *Manager) ListSites() ([]SiteFile, error) {
 				continue
 			}
 			info, _ := e.Info()
-			sites = append(sites, SiteFile{
+			sf := SiteFile{
 				Name:    name,
 				Path:    filepath.Join(confD, name),
 				Enabled: strings.HasSuffix(name, ".conf"),
 				ModTime: info.ModTime(),
-			})
+			}
+			if data, err := os.ReadFile(filepath.Join(confD, name)); err == nil {
+				sf.VesselDeployment = extractVesselDeployment(string(data))
+			}
+			sites = append(sites, sf)
 		}
 	}
 
@@ -180,6 +189,12 @@ func (m *Manager) SaveSite(name, content string) error {
 // CreateSite creates a new site config from a template.
 func (m *Manager) CreateSite(name, serverName string, port int, upstream string) error {
 	content := buildSiteConfig(serverName, port, upstream)
+	return m.SaveSite(name, content)
+}
+
+// CreateSiteForDeployment creates a site config tagged with the Vessel deployment name.
+func (m *Manager) CreateSiteForDeployment(name, serverName string, port int, upstream, deploymentName string) error {
+	content := "# vessel-deployment: " + deploymentName + "\n" + buildSiteConfig(serverName, port, upstream)
 	return m.SaveSite(name, content)
 }
 
@@ -374,6 +389,19 @@ func (m *Manager) StreamLog(ctx context.Context, logType string, lines chan<- st
 	case err := <-done:
 		return err
 	}
+}
+
+// extractVesselDeployment scans nginx config content for a
+// "# vessel-deployment: <name>" comment and returns the deployment name.
+// Returns an empty string if no such comment is found.
+func extractVesselDeployment(content string) string {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "# vessel-deployment:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "# vessel-deployment:"))
+		}
+	}
+	return ""
 }
 
 // buildSiteConfig generates a basic reverse proxy nginx site config.

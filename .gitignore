@@ -7,3 +7,4 @@ docs/templates/
 *.db-wal
 .env
 vendor/
+.kiro/

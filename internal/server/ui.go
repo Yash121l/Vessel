@@ -176,7 +176,7 @@ let S={
   nginxStatus:null,nginxSites:[],nginxMainConfig:'',nginxLogs:[],nginxStats:null,
   editingSite:null,editingContent:'',newSiteMode:false,
   logs:'',logsTarget:null,logsEs:null,
-  deploying:false,error:null,
+  deploying:false,error:null,loading:false,
   templateSkipServices:{},templateEnvDraft:{},
   updating:false,updateLog:null,
   hubQuery:'',hubResults:[],hubSearching:false,hubSelected:null,
@@ -188,7 +188,19 @@ let S={
   csPrimaryPorts:[{internal:'',external:'',protocol:'tcp'}],
   csPrimaryVolumes:[{name:'',mount:''}],
   csPrimaryEnv:'',
-  csSidecars:[],  // [{name,image,env,volumes:[{name,mount}],healthTest}]
+  csSidecars:[],  // [{name,image,env,volumes:[{name,mount}],healthTest,ports:[{internal,external,protocol}]}]
+  // Auto-refresh
+  autoRefreshTimer:null,
+  autoRefreshEnabled:false,
+  // DNS guidance
+  systemIP:null,  // string | null, fetched once on demand
+  // Deploy wizard
+  deployStep:1,
+  deployWizardApp:null,
+  deployWizardEnv:{},
+  deployWizardName:'',
+  deployWizardDomain:'',
+  deployWizardSkip:[],
 };
 function set(p){Object.assign(S,p);render()}
 async function api(method,path,body){
@@ -209,6 +221,10 @@ async function boot(){
     if(!meRes.ok){set({authReady:true,configured:true,authenticated:false,authMode:'login'});return}
     const meData=await meRes.json();
     S.configured=true;S.authReady=true;S.authenticated=true;S.currentUser=meData.user;S.serverVersion=meData.version||'';render();
+    // Restore auto-refresh preference from localStorage
+    if(localStorage.getItem('vessel-autorefresh')==='1'){
+      S.autoRefreshEnabled=true;
+    }
     await load();
   }catch(e){set({authReady:true,configured:true,authenticated:false,authMode:'login',error:e.message})}
 }
@@ -428,6 +444,202 @@ function fmtPulls(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1
 function statusColor(code){const c=parseInt(code);if(c>=500)return'var(--red)';if(c>=400)return'var(--yellow)';if(c>=300)return'var(--blue)';return'var(--green)'}
 function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function escAttr(s){return escHtml(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+// ── Shared UI helpers ─────────────────────────────────────────────────────────
+function emptyState(icon,message,actionLabel,actionFn){
+  return'<div style="text-align:center;padding:48px 24px;color:var(--muted)">'+
+    '<div style="margin-bottom:12px;opacity:.4">'+ico(icon,40)+'</div>'+
+    '<div style="font-size:14px;margin-bottom:16px">'+escHtml(message)+'</div>'+
+    (actionLabel
+      ?'<button class="btn btn-primary" onclick="'+actionFn+'">'+escHtml(actionLabel)+'</button>'
+      :'')+
+  '</div>';
+}
+function loadingSpinner(message){
+  return'<div style="display:flex;align-items:center;gap:10px;padding:24px;color:var(--muted)">'+
+    ico('loader',16)+' '+escHtml(message||'Loading\u2026')+
+  '</div>';
+}
+function errorBanner(msg){
+  if(!msg)return'';
+  return'<div style="background:var(--red-dim);border:1px solid var(--red);border-radius:var(--r);'+
+    'padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:13px">'+
+    ico('alert-triangle',14,'var(--red)')+
+    '<span style="flex:1;color:var(--red)">'+escHtml(msg)+'</span>'+
+    '<button class="btn btn-xs btn-danger" onclick="set({error:null})">Dismiss</button>'+
+  '</div>';
+}
+function statusTag(status){
+  const s=(status||'unknown').toLowerCase();
+  const cls=s==='running'   ?'tag-running'
+            :s==='stopped'  ?'tag-stopped'
+            :s==='error'    ?'tag-error'
+            :s==='deploying'?'tag-deploying'
+            :s==='updating' ?'tag-updating'
+            :s==='imported' ?'tag-imported'
+            :'tag-stopped';
+  return'<span class="tag '+cls+'"><span class="dot"></span>'+escHtml(s)+'</span>';
+}
+// ── DNS guidance ──────────────────────────────────────────────────────────────
+async function ensureSystemIP(){
+  if(S.systemIP!==null)return;
+  try{const d=await api('GET','/system/ip');S.systemIP=d.ip||'';}catch{S.systemIP='';}
+}
+function dnsGuidanceBox(domain){
+  if(!domain)return'';
+  const ip=S.systemIP||'\u2026';
+  return'<div style="background:var(--blue-dim);border:1px solid var(--blue);border-radius:var(--r);padding:12px 14px;margin-top:8px;font-size:12px">'+
+    '<div style="font-weight:600;color:var(--blue);margin-bottom:8px">'+
+      ico('globe',13,'var(--blue)')+' DNS Configuration'+
+    '</div>'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+      '<span style="color:var(--muted);width:60px">A record</span>'+
+      '<code style="flex:1;background:var(--surface2);padding:3px 8px;border-radius:4px">'+escHtml(ip)+'</code>'+
+      '<button class="btn btn-xs" onclick="copyVal(\''+escAttr(ip)+'\',this)">Copy</button>'+
+    '</div>'+
+    '<div style="display:flex;align-items:center;gap:8px">'+
+      '<span style="color:var(--muted);width:60px">CNAME</span>'+
+      '<code style="flex:1;background:var(--surface2);padding:3px 8px;border-radius:4px">'+escHtml(domain)+'</code>'+
+      '<button class="btn btn-xs" onclick="copyVal(\''+escAttr(domain)+'\',this)">Copy</button>'+
+    '</div>'+
+  '</div>';
+}
+function copyVal(val,btn){
+  navigator.clipboard.writeText(val).then(()=>{
+    const orig=btn.innerHTML;
+    btn.innerHTML='Copied';
+    setTimeout(()=>{btn.innerHTML=orig;},1500);
+  }).catch(()=>{});
+}
+// ── Deploy wizard navigation ──────────────────────────────────────────────────
+function wizardSelectApp(id){
+  const app=S.apps.find(a=>a.id===id);
+  if(!app)return;
+  // Pre-populate env draft with defaults
+  const env={};
+  if(app.env_vars){app.env_vars.forEach(ev=>{env[ev.key]=ev.default||''});}
+  set({deployWizardApp:app,deployWizardEnv:env,deployStep:2});
+}
+function wizardNext(){
+  if(S.deployStep<3)set({deployStep:S.deployStep+1});
+}
+function wizardBack(){
+  if(S.deployStep>1)set({deployStep:S.deployStep-1});
+}
+// ── Deploy wizard step 1: template selection grid ────────────────────────────
+function wizardStep1(){
+  const apps=S.apps;
+  if(!apps||!apps.length){
+    return'<div style="text-align:center;padding:48px 24px;color:var(--muted)">'+
+      '<div style="margin-bottom:12px;opacity:.4">'+ico('rocket',40)+'</div>'+
+      '<div style="font-size:14px">Loading templates…</div>'+
+    '</div>';
+  }
+  // Group apps by category for display
+  const categories=[...new Set(apps.map(a=>a.category||'Other'))].sort();
+  let html='<div>';
+  categories.forEach(cat=>{
+    const catApps=apps.filter(a=>(a.category||'Other')===cat);
+    html+='<div style="margin-bottom:28px">'+
+      '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">'+escHtml(cat)+'</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">'+
+      catApps.map(a=>{
+        const desc=a.description||'';
+        return'<div class="card" style="cursor:pointer;transition:border-color .15s,box-shadow .15s;padding:18px 16px" '+
+          'onclick="wizardSelectApp(\''+escAttr(a.id)+'\')" '+
+          'onmouseenter="this.style.borderColor=\'var(--accent)\';this.style.boxShadow=\'0 0 0 1px var(--accent)\'" '+
+          'onmouseleave="this.style.borderColor=\'\';this.style.boxShadow=\'\'">'+
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'+
+            imgAvatar(a.image,36)+
+            '<div style="min-width:0">'+
+              '<div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(a.name||a.id)+'</div>'+
+              '<div style="font-size:11px;color:var(--accent2);margin-top:1px">'+escHtml(a.category||'')+'</div>'+
+            '</div>'+
+          '</div>'+
+          (desc?'<div style="font-size:12px;color:var(--muted2);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+escHtml(desc)+'</div>':'')+
+        '</div>';
+      }).join('')+
+      '</div></div>';
+  });
+  html+='</div>';
+  return html;
+}
+// ── Deploy wizard step 2: env var form with DNS guidance ──────────────────────
+function wizardStep2(){
+  const app=S.deployWizardApp;
+  if(!app)return'';
+  const vars=app.env_vars||[];
+  const envRows=vars.map(ev=>{
+    const id='wenv_'+ev.key;
+    const type=ev.secret?'password':'text';
+    const val=escAttr(Object.prototype.hasOwnProperty.call(S.deployWizardEnv,ev.key)?S.deployWizardEnv[ev.key]:(ev.default||''));
+    return'<div class="fg" style="margin-bottom:12px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
+        '<label style="margin-bottom:5px">'+escHtml(ev.key)+(ev.required?' <span style="color:var(--red)">*</span>':'')+'</label>'+
+        (ev.secret?'<button type="button" class="btn btn-xs" onclick="(function(){const el=document.getElementById(\''+id+'\');if(!el)return;const b=new Uint8Array(32);crypto.getRandomValues(b);el.value=Array.from(b).map(x=>x.toString(16).padStart(2,\'0\')).join(\'\');S.deployWizardEnv[\''+escAttr(ev.key)+'\']=el.value;})()">Generate</button>':'')+
+      '</div>'+
+      '<input id="'+id+'" type="'+type+'" value="'+val+'" placeholder="'+escAttr(ev.description||ev.key)+'" '+
+        (ev.required?'required':'')+' '+
+        'oninput="S.deployWizardEnv[\''+escAttr(ev.key)+'\']=this.value">'+
+      (ev.description?'<div style="font-size:11px;color:var(--muted);margin-top:4px">'+escHtml(ev.description)+'</div>':'')+
+    '</div>';
+  }).join('');
+  return'<div style="max-width:680px">'+
+    '<div style="margin-bottom:20px">'+
+      '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Step 2 of 3</div>'+
+      '<div style="font-weight:700;font-size:16px">Configure '+escHtml(app.name||app.id)+'</div>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">'+ico('settings',14,'var(--accent)')+'Deployment Settings</div>'+
+      '<div class="grid2">'+
+        '<div class="fg"><label>Deployment Name <span style="color:var(--red)">*</span></label>'+
+          '<input placeholder="my-app" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required '+
+            'value="'+escAttr(S.deployWizardName)+'" oninput="S.deployWizardName=this.value"></div>'+
+        '<div class="fg"><label>Custom Domain (optional)</label>'+
+          '<input placeholder="app.example.com" '+
+            'value="'+escAttr(S.deployWizardDomain)+'" '+
+            'onfocus="ensureSystemIP()" '+
+            'oninput="S.deployWizardDomain=this.value;(function(){const box=document.getElementById(\'wiz-dns-box\');if(box)box.innerHTML=dnsGuidanceBox(S.deployWizardDomain);})()">'+
+          '<div id="wiz-dns-box">'+dnsGuidanceBox(S.deployWizardDomain)+'</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    (vars.length?
+      '<div class="card" style="margin-bottom:16px">'+
+        '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">'+ico('file-code',14,'var(--accent)')+'Environment Variables</div>'+
+        envRows+
+      '</div>':'')+
+    '<div style="display:flex;gap:8px;justify-content:space-between">'+
+      '<button type="button" class="btn" onclick="wizardBack()" style="display:flex;align-items:center;gap:5px">← Back</button>'+
+      '<button type="button" class="btn-primary" onclick="wizardNext()" style="display:flex;align-items:center;gap:5px">'+
+        'Review '+ico('chevron-right',13)+'</button>'+
+    '</div>'+
+  '</div>';
+}
+// ── Auto-refresh ──────────────────────────────────────────────────────────────
+function toggleAutoRefresh(loadFn){
+  const next=!S.autoRefreshEnabled;
+  if(next){
+    const timer=setInterval(loadFn,5000);
+    set({autoRefreshEnabled:true,autoRefreshTimer:timer});
+  }else{
+    clearInterval(S.autoRefreshTimer);
+    set({autoRefreshEnabled:false,autoRefreshTimer:null});
+  }
+  localStorage.setItem('vessel-autorefresh',next?'1':'0');
+}
+function stopAutoRefresh(){
+  if(S.autoRefreshTimer){
+    clearInterval(S.autoRefreshTimer);
+    S.autoRefreshTimer=null;
+    S.autoRefreshEnabled=false;
+  }
+}
+function autoRefreshToggle(loadFn){
+  const on=S.autoRefreshEnabled;
+  return'<button class="btn btn-sm'+(on?' btn-primary':'')+'" onclick="toggleAutoRefresh('+loadFn.name+')" title="'+(on?'Disable':'Enable')+' auto-refresh" style="display:flex;align-items:center;gap:5px">'+
+    ico('refresh-cw',13)+' '+(on?'Auto-refresh ON':'Auto-refresh OFF')+
+  '</button>';
+}
 // ── Layout ────────────────────────────────────────────────────────────────────
 function render(){
   if(!S.authReady){
@@ -438,6 +650,12 @@ function render(){
     document.getElementById('app').innerHTML=authPage();
     return;
   }
+  // Stop auto-refresh when navigating away from a page that supports it
+  const autoRefreshPages=['nginx','containers'];
+  if(S._prevPage&&S._prevPage!==S.page&&autoRefreshPages.indexOf(S._prevPage)!==-1&&autoRefreshPages.indexOf(S.page)===-1){
+    stopAutoRefresh();
+  }
+  S._prevPage=S.page;
   const navItems=[
     {id:'containers',label:'Apps',icon:'layout-dashboard'},
     {id:'compose',label:'Compose',icon:'layers'},
@@ -932,6 +1150,18 @@ function deployCustomForm(){
     '</div></form>';
 }
 // ── Compose Stack builder ─────────────────────────────────────────────────────
+function addSidecarPort(i){
+  S.csSidecars[i].ports=S.csSidecars[i].ports||[];
+  S.csSidecars[i].ports.push({internal:'',external:'',protocol:'tcp'});
+  render();
+}
+function removeSidecarPort(i,j){
+  S.csSidecars[i].ports.splice(j,1);
+  render();
+}
+function updateSidecarPort(i,j,field,val){
+  S.csSidecars[i].ports[j][field]=val;
+}
 function deployComposeForm(){
   const sc=S.csSidecars;
   function sidecarCard(s,i){
@@ -1017,7 +1247,7 @@ function deployComposeForm(){
     '<div style="max-width:860px">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
         '<div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px">'+ico('box',15,'var(--accent2)')+'Sidecar Services</div>'+
-        '<button type="button" class="btn btn-sm" onclick="S.csSidecars.push({name:\'\',image:\'\',env:\'\',volumes:[{name:\'\',mount:\'\'}],healthTest:\'\'});render()" style="display:flex;align-items:center;gap:5px">'+ico('plus',12)+' Add Sidecar</button>'+
+        '<button type="button" class="btn btn-sm" onclick="S.csSidecars.push({name:\'\',image:\'\',env:\'\',volumes:[{name:\'\',mount:\'\'}],healthTest:\'\',ports:[{internal:\'\',external:\'\',protocol:\'tcp\'}]});render()" style="display:flex;align-items:center;gap:5px">'+ico('plus',12)+' Add Sidecar</button>'+
       '</div>'+
       (sc.length?sc.map(sidecarCard).join(''):
         '<div class="card" style="text-align:center;padding:28px;border-style:dashed;border-color:var(--border2);color:var(--muted)">'+
