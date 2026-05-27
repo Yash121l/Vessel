@@ -1,0 +1,127 @@
+id: mailu
+name: Mailu
+description: Simple, full-featured mail server suite (SMTP, IMAP, webmail, admin)
+category: Email
+icon: "✉️"
+version: "2024.06"
+image: ghcr.io/mailu/nginx:2024.06
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+  - internal: 443
+    external: 8443
+    protocol: tcp
+  - internal: 25
+    external: 25
+    protocol: tcp
+  - internal: 465
+    external: 465
+    protocol: tcp
+  - internal: 587
+    external: 587
+    protocol: tcp
+  - internal: 993
+    external: 993
+    protocol: tcp
+  - internal: 995
+    external: 995
+    protocol: tcp
+
+volumes:
+  - name: mailu-data
+    mount_path: /data
+    description: Mailu application data
+  - name: mailu-mail
+    mount_path: /mail
+    description: Mail storage
+  - name: mailu-certs
+    mount_path: /certs
+    description: TLS certificates
+  - name: mailu-overrides
+    mount_path: /overrides
+    description: Configuration overrides
+
+env_vars:
+  - key: SECRET_KEY
+    description: Random 16-character secret key
+    default: ""
+    required: true
+    secret: true
+  - key: DOMAIN
+    description: Primary mail domain (e.g. example.com)
+    default: ""
+    required: true
+  - key: HOSTNAMES
+    description: Comma-separated list of mail hostnames
+    default: ""
+    required: true
+  - key: POSTMASTER
+    description: Postmaster local part (e.g. admin)
+    default: admin
+    required: false
+  - key: TLS_FLAVOR
+    description: "TLS mode: cert, letsencrypt, mail, notls"
+    default: cert
+    required: false
+  - key: INITIAL_ADMIN_ACCOUNT
+    description: Initial admin account local part
+    default: admin
+    required: false
+  - key: INITIAL_ADMIN_DOMAIN
+    description: Initial admin account domain
+    default: ""
+    required: false
+  - key: INITIAL_ADMIN_PW
+    description: Initial admin password
+    default: ""
+    required: true
+    secret: true
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/"]
+  interval: 60s
+  timeout: 30s
+  retries: 10
+
+extra_services:
+  - name: mailu-redis
+    image: redis:7-alpine
+    optional: false
+    role: cache
+    volumes:
+      - name: mailu-redis-data
+        mount_path: /data
+        description: Redis data
+
+  - name: mailu-front
+    image: ghcr.io/mailu/nginx:2024.06
+    optional: false
+    role: frontend
+
+  - name: mailu-admin
+    image: ghcr.io/mailu/admin:2024.06
+    optional: false
+    role: admin
+
+  - name: mailu-imap
+    image: ghcr.io/mailu/dovecot:2024.06
+    optional: false
+    role: imap
+
+  - name: mailu-smtp
+    image: ghcr.io/mailu/postfix:2024.06
+    optional: false
+    role: smtp
+
+  - name: mailu-antispam
+    image: ghcr.io/mailu/rspamd:2024.06
+    optional: true
+    role: antispam
+
+  - name: mailu-webmail
+    image: ghcr.io/mailu/webmail:2024.06
+    optional: true
+    role: webmail

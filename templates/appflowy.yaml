@@ -1,0 +1,81 @@
+id: appflowy
+name: AppFlowy
+description: Open-source Notion alternative for notes, wikis, and project management
+category: Productivity
+icon: "📝"
+version: latest
+image: appflowyinc/appflowy-cloud:latest
+proxy_port: 8000
+
+ports:
+  - internal: 8000
+    external: 8000
+    protocol: tcp
+
+volumes:
+  - name: appflowy-data
+    mount_path: /var/lib/appflowy
+    description: AppFlowy application data
+
+env_vars:
+  - key: APPFLOWY_DATABASE_URL
+    description: PostgreSQL connection string
+    default: postgres://appflowy:appflowy_password@appflowy-db:5432/appflowy
+    required: false
+  - key: APPFLOWY_REDIS_URI
+    description: Redis connection string
+    default: redis://appflowy-redis:6379
+    required: false
+  - key: APPFLOWY_GOTRUE_JWT_SECRET
+    description: JWT secret for authentication
+    default: ""
+    required: true
+    secret: true
+  - key: APPFLOWY_GOTRUE_ADMIN_EMAIL
+    description: Admin email
+    default: admin@appflowy.local
+    required: false
+  - key: APPFLOWY_GOTRUE_ADMIN_PASSWORD
+    description: Admin password
+    default: ""
+    required: true
+    secret: true
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: appflowy-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: appflowy
+      POSTGRES_USER: appflowy
+      POSTGRES_PASSWORD: appflowy_password
+    volumes:
+      - name: appflowy-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U appflowy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: appflowy-redis
+    image: redis:7-alpine
+    optional: true
+    role: cache
+    volumes:
+      - name: appflowy-redis-data
+        mount_path: /data
+        description: Redis data
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

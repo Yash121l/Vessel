@@ -1,0 +1,58 @@
+id: wgeasy
+name: WireGuard (WG-Easy)
+description: Easy-to-use WireGuard VPN server with web UI
+category: Networking
+icon: "🔒"
+version: latest
+image: ghcr.io/wg-easy/wg-easy:latest
+proxy_port: 51821
+
+ports:
+  - internal: 51820
+    external: 51820
+    protocol: udp
+  - internal: 51821
+    external: 51821
+    protocol: tcp
+
+volumes:
+  - name: wgeasy-data
+    mount_path: /etc/wireguard
+    description: WireGuard configuration and peer keys
+
+env_vars:
+  - key: WG_HOST
+    description: Public hostname or IP of your server
+    default: ""
+    required: true
+  - key: PASSWORD
+    description: Web UI admin password
+    default: ""
+    required: true
+    secret: true
+  - key: WG_PORT
+    description: WireGuard UDP port
+    default: "51820"
+    required: false
+  - key: WG_DEFAULT_ADDRESS
+    description: VPN subnet (e.g. 10.8.0.x)
+    default: "10.8.0.x"
+    required: false
+  - key: WG_DEFAULT_DNS
+    description: DNS server for VPN clients
+    default: "1.1.1.1"
+    required: false
+  - key: WG_ALLOWED_IPS
+    description: Allowed IPs for VPN clients
+    default: "0.0.0.0/0, ::/0"
+    required: false
+  - key: WG_PERSISTENT_KEEPALIVE
+    description: Keepalive interval in seconds
+    default: "25"
+    required: false
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:51821"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

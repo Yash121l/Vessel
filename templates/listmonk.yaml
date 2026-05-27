@@ -1,0 +1,70 @@
+id: listmonk
+name: Listmonk
+description: High-performance self-hosted newsletter and mailing list manager
+category: Email
+icon: "📨"
+version: latest
+image: listmonk/listmonk:latest
+proxy_port: 9000
+
+ports:
+  - internal: 9000
+    external: 9000
+    protocol: tcp
+
+volumes:
+  - name: listmonk-uploads
+    mount_path: /listmonk/uploads
+    description: Listmonk uploaded media
+
+env_vars:
+  - key: LISTMONK_app__address
+    description: Address to bind to
+    default: "0.0.0.0:9000"
+    required: false
+  - key: LISTMONK_db__host
+    description: PostgreSQL host
+    default: listmonk-db
+    required: false
+  - key: LISTMONK_db__port
+    description: PostgreSQL port
+    default: "5432"
+    required: false
+  - key: LISTMONK_db__user
+    description: PostgreSQL username
+    default: listmonk
+    required: false
+  - key: LISTMONK_db__password
+    description: PostgreSQL password
+    default: listmonk_password
+    required: false
+    secret: true
+  - key: LISTMONK_db__database
+    description: PostgreSQL database name
+    default: listmonk
+    required: false
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:9000"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+
+extra_services:
+  - name: listmonk-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: listmonk
+      POSTGRES_USER: listmonk
+      POSTGRES_PASSWORD: listmonk_password
+    volumes:
+      - name: listmonk-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U listmonk"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

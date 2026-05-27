@@ -1,0 +1,85 @@
+id: forgejo
+name: Forgejo
+description: Lightweight self-hosted Git service (Gitea fork)
+category: Development
+icon: "🔱"
+version: latest
+image: codeberg.org/forgejo/forgejo:latest
+proxy_port: 3000
+
+ports:
+  - internal: 3000
+    external: 3000
+    protocol: tcp
+  - internal: 22
+    external: 2222
+    protocol: tcp
+
+volumes:
+  - name: forgejo-data
+    mount_path: /data
+    description: Forgejo repositories, configuration, and data
+
+env_vars:
+  - key: FORGEJO__database__DB_TYPE
+    description: "Database type: sqlite3, postgres, or mysql"
+    default: sqlite3
+    required: false
+  - key: FORGEJO__database__HOST
+    description: Database host (when not using sqlite3)
+    default: forgejo-db:5432
+    required: false
+  - key: FORGEJO__database__NAME
+    description: Database name
+    default: forgejo
+    required: false
+  - key: FORGEJO__database__USER
+    description: Database username
+    default: forgejo
+    required: false
+  - key: FORGEJO__database__PASSWD
+    description: Database password
+    default: forgejo_password
+    required: false
+    secret: true
+  - key: FORGEJO__server__DOMAIN
+    description: Domain name for Forgejo
+    default: ""
+    required: false
+  - key: FORGEJO__server__ROOT_URL
+    description: Full public URL
+    default: ""
+    required: false
+  - key: USER_UID
+    description: UID for the git user
+    default: "1000"
+    required: false
+  - key: USER_GID
+    description: GID for the git user
+    default: "1000"
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:3000"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: forgejo-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: forgejo
+      POSTGRES_USER: forgejo
+      POSTGRES_PASSWORD: forgejo_password
+    volumes:
+      - name: forgejo-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U forgejo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

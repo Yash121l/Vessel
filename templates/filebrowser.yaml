@@ -1,0 +1,40 @@
+id: filebrowser
+name: Filebrowser
+description: Lightweight web-based file manager with sharing and user management
+category: Storage
+icon: "📁"
+version: latest
+image: filebrowser/filebrowser:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: filebrowser-data
+    mount_path: /srv
+    description: Files served by Filebrowser
+  - name: filebrowser-db
+    mount_path: /database
+    description: Filebrowser database
+  - name: filebrowser-config
+    mount_path: /config
+    description: Filebrowser configuration
+
+env_vars:
+  - key: FB_BASEURL
+    description: Base URL path (e.g. /files)
+    default: ""
+    required: false
+  - key: FB_PORT
+    description: Port to listen on
+    default: "80"
+    required: false
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

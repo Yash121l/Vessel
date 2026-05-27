@@ -1,0 +1,79 @@
+id: vikunja
+name: Vikunja
+description: Open-source to-do and project management app
+category: Productivity
+icon: "✅"
+version: latest
+image: vikunja/vikunja:latest
+proxy_port: 3456
+
+ports:
+  - internal: 3456
+    external: 3456
+    protocol: tcp
+
+volumes:
+  - name: vikunja-files
+    mount_path: /app/vikunja/files
+    description: Vikunja file attachments
+
+env_vars:
+  - key: VIKUNJA_SERVICE_JWTSECRET
+    description: JWT secret for authentication
+    default: ""
+    required: true
+    secret: true
+  - key: VIKUNJA_DATABASE_TYPE
+    description: "Database type: sqlite, mysql, or postgres"
+    default: postgres
+    required: false
+  - key: VIKUNJA_DATABASE_HOST
+    description: Database host
+    default: vikunja-db
+    required: false
+  - key: VIKUNJA_DATABASE_DATABASE
+    description: Database name
+    default: vikunja
+    required: false
+  - key: VIKUNJA_DATABASE_USER
+    description: Database username
+    default: vikunja
+    required: false
+  - key: VIKUNJA_DATABASE_PASSWORD
+    description: Database password
+    default: vikunja_password
+    required: false
+    secret: true
+  - key: VIKUNJA_SERVICE_FRONTENDURL
+    description: Public URL of your Vikunja instance
+    default: ""
+    required: false
+  - key: VIKUNJA_MAILER_HOST
+    description: SMTP host for email notifications
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:3456/api/v1/info"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+
+extra_services:
+  - name: vikunja-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: vikunja
+      POSTGRES_USER: vikunja
+      POSTGRES_PASSWORD: vikunja_password
+    volumes:
+      - name: vikunja-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U vikunja"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

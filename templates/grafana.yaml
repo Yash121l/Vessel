@@ -1,0 +1,60 @@
+id: grafana
+name: Grafana
+description: Open source analytics and monitoring platform
+category: Monitoring
+icon: "📡"
+version: latest
+image: grafana/grafana:latest
+proxy_port: 3000
+
+ports:
+  - internal: 3000
+    external: 3000
+    protocol: tcp
+
+volumes:
+  - name: grafana-data
+    mount_path: /var/lib/grafana
+    description: Grafana dashboards, plugins, and configuration
+
+env_vars:
+  - key: GF_SECURITY_ADMIN_USER
+    description: Admin username
+    default: admin
+    required: false
+  - key: GF_SECURITY_ADMIN_PASSWORD
+    description: Admin password
+    default: ""
+    required: true
+    secret: true
+  - key: GF_SERVER_ROOT_URL
+    description: Public URL of your Grafana instance
+    default: ""
+    required: false
+  - key: GF_DATABASE_TYPE
+    description: "Database type: sqlite3, mysql, or postgres"
+    default: sqlite3
+    required: false
+  - key: GF_DATABASE_HOST
+    description: Database host (when not using sqlite3)
+    default: grafana-db:5432
+    required: false
+  - key: GF_DATABASE_NAME
+    description: Database name
+    default: grafana
+    required: false
+  - key: GF_DATABASE_USER
+    description: Database username
+    default: grafana
+    required: false
+  - key: GF_DATABASE_PASSWORD
+    description: Database password
+    default: grafana_password
+    required: false
+    secret: true
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

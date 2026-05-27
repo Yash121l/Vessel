@@ -1,0 +1,104 @@
+id: authelia
+name: Authelia
+description: Open-source authentication and authorization server with SSO and 2FA
+category: Security
+icon: "🔑"
+version: latest
+image: authelia/authelia:latest
+proxy_port: 9091
+
+ports:
+  - internal: 9091
+    external: 9091
+    protocol: tcp
+
+volumes:
+  - name: authelia-config
+    mount_path: /config
+    description: Authelia configuration and user database
+
+env_vars:
+  - key: AUTHELIA_JWT_SECRET
+    description: JWT secret for session tokens
+    default: ""
+    required: true
+    secret: true
+  - key: AUTHELIA_SESSION_SECRET
+    description: Session encryption secret
+    default: ""
+    required: true
+    secret: true
+  - key: AUTHELIA_STORAGE_ENCRYPTION_KEY
+    description: Storage encryption key (min 20 chars)
+    default: ""
+    required: true
+    secret: true
+  - key: AUTHELIA_STORAGE_POSTGRES_HOST
+    description: PostgreSQL host
+    default: authelia-db
+    required: false
+  - key: AUTHELIA_STORAGE_POSTGRES_DATABASE
+    description: PostgreSQL database name
+    default: authelia
+    required: false
+  - key: AUTHELIA_STORAGE_POSTGRES_USERNAME
+    description: PostgreSQL username
+    default: authelia
+    required: false
+  - key: AUTHELIA_STORAGE_POSTGRES_PASSWORD
+    description: PostgreSQL password
+    default: authelia_password
+    required: false
+    secret: true
+  - key: AUTHELIA_NOTIFIER_SMTP_HOST
+    description: SMTP host for notifications
+    default: ""
+    required: false
+  - key: AUTHELIA_NOTIFIER_SMTP_USERNAME
+    description: SMTP username
+    default: ""
+    required: false
+  - key: AUTHELIA_NOTIFIER_SMTP_PASSWORD
+    description: SMTP password
+    default: ""
+    required: false
+    secret: true
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:9091/api/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+
+extra_services:
+  - name: authelia-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: authelia
+      POSTGRES_USER: authelia
+      POSTGRES_PASSWORD: authelia_password
+    volumes:
+      - name: authelia-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U authelia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: authelia-redis
+    image: redis:7-alpine
+    optional: true
+    role: cache
+    volumes:
+      - name: authelia-redis-data
+        mount_path: /data
+        description: Redis session data
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

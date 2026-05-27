@@ -1,0 +1,56 @@
+id: pihole
+name: Pi-hole
+description: Network-wide ad blocker and DNS sinkhole
+category: Networking
+icon: "🕳️"
+version: latest
+image: pihole/pihole:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+  - internal: 53
+    external: 53
+    protocol: tcp
+  - internal: 53
+    external: 53
+    protocol: udp
+
+volumes:
+  - name: pihole-etc
+    mount_path: /etc/pihole
+    description: Pi-hole configuration and blocklists
+  - name: pihole-dnsmasq
+    mount_path: /etc/dnsmasq.d
+    description: dnsmasq configuration
+
+env_vars:
+  - key: WEBPASSWORD
+    description: Password for the Pi-hole web admin panel
+    default: ""
+    required: true
+    secret: true
+  - key: TZ
+    description: Timezone
+    default: UTC
+    required: false
+  - key: PIHOLE_DNS_
+    description: Upstream DNS servers (semicolon-separated)
+    default: "8.8.8.8;8.8.4.4"
+    required: false
+  - key: DNSSEC
+    description: Enable DNSSEC validation
+    default: "false"
+    required: false
+  - key: VIRTUAL_HOST
+    description: Virtual hostname for the admin panel
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/admin"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

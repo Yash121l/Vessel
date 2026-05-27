@@ -1,0 +1,81 @@
+id: redash
+name: Redash
+description: Open-source data visualization and dashboarding tool
+category: Analytics
+icon: "📈"
+version: latest
+image: redash/redash:latest
+proxy_port: 5000
+
+ports:
+  - internal: 5000
+    external: 5000
+    protocol: tcp
+
+volumes:
+  - name: redash-data
+    mount_path: /app/data
+    description: Redash application data
+
+env_vars:
+  - key: REDASH_SECRET_KEY
+    description: Secret key for session security
+    default: ""
+    required: true
+    secret: true
+  - key: REDASH_DATABASE_URL
+    description: PostgreSQL connection string
+    default: postgresql://redash:redash_password@redash-db/redash
+    required: false
+  - key: REDASH_REDIS_URL
+    description: Redis connection string
+    default: redis://redash-redis:6379/0
+    required: false
+  - key: REDASH_COOKIE_SECRET
+    description: Cookie secret key
+    default: ""
+    required: true
+    secret: true
+  - key: REDASH_WEB_WORKERS
+    description: Number of web worker processes
+    default: "4"
+    required: false
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/ping"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: redash-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: redash
+      POSTGRES_USER: redash
+      POSTGRES_PASSWORD: redash_password
+    volumes:
+      - name: redash-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U redash"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: redash-redis
+    image: redis:7-alpine
+    optional: true
+    role: cache
+    volumes:
+      - name: redash-redis-data
+        mount_path: /data
+        description: Redis data
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

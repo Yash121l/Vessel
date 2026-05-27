@@ -1,0 +1,68 @@
+id: rocketchat
+name: Rocket.Chat
+description: Open-source team communication and messaging platform
+category: Communication
+icon: "🚀"
+version: latest
+image: rocket.chat:latest
+proxy_port: 3000
+
+ports:
+  - internal: 3000
+    external: 3000
+    protocol: tcp
+
+volumes:
+  - name: rocketchat-uploads
+    mount_path: /app/uploads
+    description: Rocket.Chat file uploads
+
+env_vars:
+  - key: ROOT_URL
+    description: Public URL of your Rocket.Chat instance
+    default: ""
+    required: true
+  - key: MONGO_URL
+    description: MongoDB connection string
+    default: mongodb://rocketchat-db:27017/rocketchat
+    required: false
+  - key: MONGO_OPLOG_URL
+    description: MongoDB oplog URL for real-time updates
+    default: mongodb://rocketchat-db:27017/local
+    required: false
+  - key: ADMIN_USERNAME
+    description: Initial admin username
+    default: admin
+    required: false
+  - key: ADMIN_PASS
+    description: Initial admin password
+    default: ""
+    required: true
+    secret: true
+  - key: ADMIN_EMAIL
+    description: Initial admin email
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:3000/api/v1/info"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: rocketchat-db
+    image: mongo:6
+    optional: true
+    role: database
+    environment:
+      MONGO_INITDB_DATABASE: rocketchat
+    volumes:
+      - name: rocketchat-db-data
+        mount_path: /data/db
+        description: MongoDB data
+    health_check:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

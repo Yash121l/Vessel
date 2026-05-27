@@ -1,0 +1,53 @@
+id: gitlab
+name: GitLab CE
+description: Full-featured self-hosted Git platform with CI/CD
+category: Development
+icon: "🦊"
+version: latest
+image: gitlab/gitlab-ce:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+  - internal: 443
+    external: 8443
+    protocol: tcp
+  - internal: 22
+    external: 2222
+    protocol: tcp
+
+volumes:
+  - name: gitlab-config
+    mount_path: /etc/gitlab
+    description: GitLab configuration
+  - name: gitlab-logs
+    mount_path: /var/log/gitlab
+    description: GitLab logs
+  - name: gitlab-data
+    mount_path: /var/opt/gitlab
+    description: GitLab repositories and data
+
+env_vars:
+  - key: GITLAB_OMNIBUS_CONFIG
+    description: Inline omnibus configuration (Ruby)
+    default: |
+      external_url 'http://localhost'
+      gitlab_rails['gitlab_shell_ssh_port'] = 2222
+    required: false
+  - key: GITLAB_ROOT_PASSWORD
+    description: Initial root password
+    default: ""
+    required: true
+    secret: true
+  - key: TZ
+    description: Timezone
+    default: UTC
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/-/health"]
+  interval: 60s
+  timeout: 30s
+  retries: 10

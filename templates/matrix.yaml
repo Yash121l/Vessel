@@ -1,0 +1,84 @@
+id: matrix
+name: Matrix / Element (Synapse)
+description: Decentralized, federated messaging with Element web client
+category: Communication
+icon: "🔷"
+version: latest
+image: matrixdotorg/synapse:latest
+proxy_port: 8008
+
+ports:
+  - internal: 8008
+    external: 8008
+    protocol: tcp
+
+volumes:
+  - name: synapse-data
+    mount_path: /data
+    description: Synapse homeserver data and media
+
+env_vars:
+  - key: SYNAPSE_SERVER_NAME
+    description: Your Matrix server name (e.g. matrix.example.com)
+    default: ""
+    required: true
+  - key: SYNAPSE_REPORT_STATS
+    description: Report anonymous usage statistics to Matrix.org
+    default: "no"
+    required: false
+  - key: SYNAPSE_CONFIG_PATH
+    description: Path to the Synapse config file
+    default: /data/homeserver.yaml
+    required: false
+  - key: POSTGRES_HOST
+    description: PostgreSQL host
+    default: synapse-db
+    required: false
+  - key: POSTGRES_DB
+    description: PostgreSQL database name
+    default: synapse
+    required: false
+  - key: POSTGRES_USER
+    description: PostgreSQL username
+    default: synapse
+    required: false
+  - key: POSTGRES_PASSWORD
+    description: PostgreSQL password
+    default: synapse_password
+    required: false
+    secret: true
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: synapse-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: synapse
+      POSTGRES_USER: synapse
+      POSTGRES_PASSWORD: synapse_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - name: synapse-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U synapse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: element-web
+    image: vectorim/element-web:latest
+    optional: true
+    role: web-client
+    ports:
+      - internal: 80
+        external: 8009
+        protocol: tcp

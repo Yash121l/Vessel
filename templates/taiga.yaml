@@ -1,0 +1,113 @@
+id: taiga
+name: Taiga
+description: Open-source agile project management platform
+category: Productivity
+icon: "🌿"
+version: latest
+image: taigaio/taiga-front:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: taiga-static
+    mount_path: /taiga-back/static
+    description: Taiga static files
+  - name: taiga-media
+    mount_path: /taiga-back/media
+    description: Taiga media uploads
+
+env_vars:
+  - key: TAIGA_SECRET_KEY
+    description: Django secret key
+    default: ""
+    required: true
+    secret: true
+  - key: TAIGA_SITES_DOMAIN
+    description: Public domain (e.g. taiga.example.com)
+    default: ""
+    required: true
+  - key: TAIGA_SITES_SCHEME
+    description: URL scheme (http or https)
+    default: http
+    required: false
+  - key: POSTGRES_HOST
+    description: PostgreSQL host
+    default: taiga-db
+    required: false
+  - key: POSTGRES_DB
+    description: PostgreSQL database name
+    default: taiga
+    required: false
+  - key: POSTGRES_USER
+    description: PostgreSQL username
+    default: taiga
+    required: false
+  - key: POSTGRES_PASSWORD
+    description: PostgreSQL password
+    default: taiga_password
+    required: false
+    secret: true
+  - key: RABBITMQ_USER
+    description: RabbitMQ username
+    default: taiga
+    required: false
+  - key: RABBITMQ_PASS
+    description: RabbitMQ password
+    default: taiga_password
+    required: false
+    secret: true
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: taiga-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: taiga
+      POSTGRES_USER: taiga
+      POSTGRES_PASSWORD: taiga_password
+    volumes:
+      - name: taiga-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U taiga"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: taiga-redis
+    image: redis:7-alpine
+    optional: true
+    role: cache
+    volumes:
+      - name: taiga-redis-data
+        mount_path: /data
+        description: Redis data
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  - name: taiga-rabbitmq
+    image: rabbitmq:3.12-management-alpine
+    optional: true
+    role: queue
+    environment:
+      RABBITMQ_DEFAULT_USER: taiga
+      RABBITMQ_DEFAULT_PASS: taiga_password
+    volumes:
+      - name: taiga-rabbitmq-data
+        mount_path: /var/lib/rabbitmq
+        description: RabbitMQ data

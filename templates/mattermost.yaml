@@ -1,0 +1,74 @@
+id: mattermost
+name: Mattermost
+description: Open-source team messaging and collaboration platform
+category: Communication
+icon: "💬"
+version: latest
+image: mattermost/mattermost-team-edition:latest
+proxy_port: 8065
+
+ports:
+  - internal: 8065
+    external: 8065
+    protocol: tcp
+
+volumes:
+  - name: mattermost-config
+    mount_path: /mattermost/config
+    description: Mattermost configuration
+  - name: mattermost-data
+    mount_path: /mattermost/data
+    description: Mattermost user data and attachments
+  - name: mattermost-logs
+    mount_path: /mattermost/logs
+    description: Mattermost logs
+  - name: mattermost-plugins
+    mount_path: /mattermost/plugins
+    description: Mattermost plugins
+
+env_vars:
+  - key: MM_SQLSETTINGS_DRIVERNAME
+    description: Database driver (postgres or mysql)
+    default: postgres
+    required: false
+  - key: MM_SQLSETTINGS_DATASOURCE
+    description: Database connection string
+    default: postgres://mattermost:mattermost_password@mattermost-db:5432/mattermost?sslmode=disable
+    required: false
+  - key: MM_SERVICESETTINGS_SITEURL
+    description: Public URL of your Mattermost instance
+    default: ""
+    required: false
+  - key: MM_EMAILSETTINGS_SMTPSERVER
+    description: SMTP server for email notifications
+    default: ""
+    required: false
+  - key: MM_EMAILSETTINGS_SMTPPORT
+    description: SMTP port
+    default: "587"
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:8065/api/v4/system/ping"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: mattermost-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: mattermost
+      POSTGRES_USER: mattermost
+      POSTGRES_PASSWORD: mattermost_password
+    volumes:
+      - name: mattermost-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U mattermost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

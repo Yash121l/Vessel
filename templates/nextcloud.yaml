@@ -1,0 +1,93 @@
+id: nextcloud
+name: Nextcloud
+description: Self-hosted file sync, sharing, and collaboration platform
+category: Storage
+icon: "☁️"
+version: latest
+image: nextcloud:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: nextcloud-data
+    mount_path: /var/www/html
+    description: Nextcloud application files and user data
+
+env_vars:
+  - key: NEXTCLOUD_ADMIN_USER
+    description: Initial admin username
+    default: admin
+    required: false
+  - key: NEXTCLOUD_ADMIN_PASSWORD
+    description: Initial admin password
+    default: ""
+    required: true
+    secret: true
+  - key: NEXTCLOUD_TRUSTED_DOMAINS
+    description: Space-separated list of trusted domains
+    default: ""
+    required: false
+  - key: POSTGRES_HOST
+    description: PostgreSQL host
+    default: nextcloud-db
+    required: false
+  - key: POSTGRES_DB
+    description: PostgreSQL database name
+    default: nextcloud
+    required: false
+  - key: POSTGRES_USER
+    description: PostgreSQL username
+    default: nextcloud
+    required: false
+  - key: POSTGRES_PASSWORD
+    description: PostgreSQL password
+    default: nextcloud_password
+    required: false
+    secret: true
+  - key: REDIS_HOST
+    description: Redis host for caching
+    default: nextcloud-redis
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/status.php"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: nextcloud-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: nextcloud_password
+    volumes:
+      - name: nextcloud-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U nextcloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: nextcloud-redis
+    image: redis:7-alpine
+    optional: true
+    role: cache
+    volumes:
+      - name: nextcloud-redis-data
+        mount_path: /data
+        description: Redis cache data
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

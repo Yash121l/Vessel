@@ -1,0 +1,56 @@
+id: nocodb
+name: NocoDB
+description: Open-source Airtable alternative — turn any database into a smart spreadsheet
+category: Productivity
+icon: "📋"
+version: latest
+image: nocodb/nocodb:latest
+proxy_port: 8080
+
+ports:
+  - internal: 8080
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: nocodb-data
+    mount_path: /usr/app/data
+    description: NocoDB metadata and SQLite database
+
+env_vars:
+  - key: NC_DB
+    description: External database URL (leave empty to use built-in SQLite)
+    default: ""
+    required: false
+  - key: NC_AUTH_JWT_SECRET
+    description: JWT secret for authentication
+    default: ""
+    required: true
+    secret: true
+  - key: NC_PUBLIC_URL
+    description: Public URL of your NocoDB instance
+    default: ""
+    required: false
+  - key: NC_SMTP_HOST
+    description: SMTP host for email notifications
+    default: ""
+    required: false
+  - key: NC_SMTP_PORT
+    description: SMTP port
+    default: "587"
+    required: false
+  - key: NC_SMTP_USERNAME
+    description: SMTP username
+    default: ""
+    required: false
+  - key: NC_SMTP_PASSWORD
+    description: SMTP password
+    default: ""
+    required: false
+    secret: true
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

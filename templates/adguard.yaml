@@ -1,0 +1,42 @@
+id: adguard
+name: AdGuard Home
+description: Network-wide DNS-based ad and tracker blocker
+category: Networking
+icon: "🛡️"
+version: latest
+image: adguard/adguardhome:latest
+proxy_port: 3000
+
+ports:
+  - internal: 3000
+    external: 3000
+    protocol: tcp
+  - internal: 53
+    external: 53
+    protocol: tcp
+  - internal: 53
+    external: 53
+    protocol: udp
+  - internal: 80
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: adguard-work
+    mount_path: /opt/adguardhome/work
+    description: AdGuard Home working data and query logs
+  - name: adguard-conf
+    mount_path: /opt/adguardhome/conf
+    description: AdGuard Home configuration
+
+env_vars:
+  - key: TZ
+    description: Timezone
+    default: UTC
+    required: false
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

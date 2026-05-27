@@ -1,0 +1,99 @@
+id: jitsi
+name: Jitsi Meet
+description: Open-source video conferencing solution
+category: Communication
+icon: "📹"
+version: latest
+image: jitsi/web:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+  - internal: 443
+    external: 8443
+    protocol: tcp
+  - internal: 10000
+    external: 10000
+    protocol: udp
+
+volumes:
+  - name: jitsi-web-config
+    mount_path: /config
+    description: Jitsi web configuration
+  - name: jitsi-web-letsencrypt
+    mount_path: /etc/letsencrypt
+    description: TLS certificates
+
+env_vars:
+  - key: PUBLIC_URL
+    description: Public URL of your Jitsi instance (e.g. https://meet.example.com)
+    default: ""
+    required: true
+  - key: JICOFO_AUTH_PASSWORD
+    description: Jicofo authentication password
+    default: ""
+    required: true
+    secret: true
+  - key: JVB_AUTH_PASSWORD
+    description: JVB authentication password
+    default: ""
+    required: true
+    secret: true
+  - key: JIGASI_XMPP_PASSWORD
+    description: Jigasi XMPP password (optional SIP gateway)
+    default: ""
+    required: false
+    secret: true
+  - key: JIBRI_RECORDER_PASSWORD
+    description: Jibri recorder password (optional recording)
+    default: ""
+    required: false
+    secret: true
+  - key: TZ
+    description: Timezone
+    default: UTC
+    required: false
+  - key: ENABLE_AUTH
+    description: Enable authentication
+    default: "0"
+    required: false
+  - key: ENABLE_GUESTS
+    description: Allow guest access
+    default: "1"
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: jitsi-prosody
+    image: jitsi/prosody:latest
+    optional: false
+    role: xmpp
+    volumes:
+      - name: jitsi-prosody-config
+        mount_path: /config
+        description: Prosody XMPP configuration
+
+  - name: jitsi-jicofo
+    image: jitsi/jicofo:latest
+    optional: false
+    role: focus
+    volumes:
+      - name: jitsi-jicofo-config
+        mount_path: /config
+        description: Jicofo configuration
+
+  - name: jitsi-jvb
+    image: jitsi/jvb:latest
+    optional: false
+    role: videobridge
+    volumes:
+      - name: jitsi-jvb-config
+        mount_path: /config
+        description: JVB configuration

@@ -1,0 +1,64 @@
+id: vaultwarden
+name: Vaultwarden
+description: Lightweight Bitwarden-compatible password manager server
+category: Security
+icon: "🔐"
+version: latest
+image: vaultwarden/server:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: vaultwarden-data
+    mount_path: /data
+    description: Vaultwarden vault data and attachments
+
+env_vars:
+  - key: ADMIN_TOKEN
+    description: Token for the /admin panel (leave empty to disable)
+    default: ""
+    required: false
+    secret: true
+  - key: DOMAIN
+    description: Full public URL (e.g. https://vault.example.com)
+    default: ""
+    required: false
+  - key: SIGNUPS_ALLOWED
+    description: Allow new user registrations
+    default: "true"
+    required: false
+  - key: INVITATIONS_ALLOWED
+    description: Allow org invitations
+    default: "true"
+    required: false
+  - key: SMTP_HOST
+    description: SMTP server host for email notifications
+    default: ""
+    required: false
+  - key: SMTP_PORT
+    description: SMTP server port
+    default: "587"
+    required: false
+  - key: SMTP_FROM
+    description: From address for emails
+    default: ""
+    required: false
+  - key: SMTP_USERNAME
+    description: SMTP username
+    default: ""
+    required: false
+  - key: SMTP_PASSWORD
+    description: SMTP password
+    default: ""
+    required: false
+    secret: true
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/alive"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

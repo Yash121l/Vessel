@@ -1,0 +1,94 @@
+id: immich
+name: Immich
+description: High-performance self-hosted photo and video backup solution
+category: Media
+icon: "📷"
+version: latest
+image: ghcr.io/immich-app/immich-server:release
+proxy_port: 2283
+
+ports:
+  - internal: 2283
+    external: 2283
+    protocol: tcp
+
+volumes:
+  - name: immich-upload
+    mount_path: /usr/src/app/upload
+    description: Photo and video uploads
+
+env_vars:
+  - key: DB_HOSTNAME
+    description: PostgreSQL host
+    default: immich-db
+    required: false
+  - key: DB_DATABASE_NAME
+    description: PostgreSQL database name
+    default: immich
+    required: false
+  - key: DB_USERNAME
+    description: PostgreSQL username
+    default: immich
+    required: false
+  - key: DB_PASSWORD
+    description: PostgreSQL password
+    default: immich_password
+    required: false
+    secret: true
+  - key: REDIS_HOSTNAME
+    description: Redis host
+    default: immich-redis
+    required: false
+  - key: JWT_SECRET
+    description: Secret for JWT token signing
+    default: ""
+    required: true
+    secret: true
+  - key: TZ
+    description: Timezone
+    default: UTC
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:2283/api/server-info/ping"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: immich-db
+    image: tensorchord/pgvecto-rs:pg14-v0.2.0
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: immich
+      POSTGRES_USER: immich
+      POSTGRES_PASSWORD: immich_password
+    volumes:
+      - name: immich-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U immich"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: immich-redis
+    image: redis:7-alpine
+    optional: true
+    role: cache
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  - name: immich-machine-learning
+    image: ghcr.io/immich-app/immich-machine-learning:release
+    optional: true
+    role: ml
+    volumes:
+      - name: immich-model-cache
+        mount_path: /cache
+        description: Machine learning model cache

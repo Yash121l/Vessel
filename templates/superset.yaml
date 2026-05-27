@@ -1,0 +1,89 @@
+id: superset
+name: Apache Superset
+description: Modern open-source data exploration and visualization platform
+category: Analytics
+icon: "📊"
+version: latest
+image: apache/superset:latest
+proxy_port: 8088
+
+ports:
+  - internal: 8088
+    external: 8088
+    protocol: tcp
+
+volumes:
+  - name: superset-home
+    mount_path: /app/superset_home
+    description: Superset configuration and SQLite database
+
+env_vars:
+  - key: SUPERSET_SECRET_KEY
+    description: Secret key for session security (generate with openssl rand -base64 42)
+    default: ""
+    required: true
+    secret: true
+  - key: SUPERSET_LOAD_EXAMPLES
+    description: Load example dashboards on first run
+    default: "false"
+    required: false
+  - key: DATABASE_URL
+    description: SQLAlchemy database URL for Superset metadata
+    default: postgresql+psycopg2://superset:superset_password@superset-db:5432/superset
+    required: false
+  - key: REDIS_URL
+    description: Redis URL for caching and Celery
+    default: redis://superset-redis:6379/0
+    required: false
+  - key: ADMIN_USERNAME
+    description: Initial admin username
+    default: admin
+    required: false
+  - key: ADMIN_PASSWORD
+    description: Initial admin password
+    default: ""
+    required: true
+    secret: true
+  - key: ADMIN_EMAIL
+    description: Initial admin email
+    default: admin@superset.local
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: superset-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: superset
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD: superset_password
+    volumes:
+      - name: superset-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U superset"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: superset-redis
+    image: redis:7-alpine
+    optional: true
+    role: cache
+    volumes:
+      - name: superset-redis-data
+        mount_path: /data
+        description: Redis data
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

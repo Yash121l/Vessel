@@ -1,0 +1,57 @@
+id: plex
+name: Plex
+description: Personal media server for movies, TV, music, and photos
+category: Media
+icon: "🎞️"
+version: latest
+image: plexinc/pms-docker:latest
+proxy_port: 32400
+
+ports:
+  - internal: 32400
+    external: 32400
+    protocol: tcp
+
+volumes:
+  - name: plex-config
+    mount_path: /config
+    description: Plex configuration and metadata database
+  - name: plex-transcode
+    mount_path: /transcode
+    description: Temporary transcoding files
+  - name: plex-media
+    mount_path: /data
+    description: Media library (movies, TV, music)
+
+env_vars:
+  - key: PLEX_CLAIM
+    description: Claim token from plex.tv/claim to link your server
+    default: ""
+    required: false
+    secret: true
+  - key: ADVERTISE_IP
+    description: Public IP/URL for Plex to advertise (e.g. http://1.2.3.4:32400/)
+    default: ""
+    required: false
+  - key: PLEX_UID
+    description: UID for the Plex process
+    default: "1000"
+    required: false
+  - key: PLEX_GID
+    description: GID for the Plex process
+    default: "1000"
+    required: false
+  - key: TZ
+    description: Timezone
+    default: UTC
+    required: false
+  - key: VERSION
+    description: Plex version to use (docker, latest, or specific version)
+    default: docker
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:32400/identity"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

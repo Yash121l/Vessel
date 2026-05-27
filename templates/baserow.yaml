@@ -1,0 +1,84 @@
+id: baserow
+name: Baserow
+description: Open-source no-code database and Airtable alternative
+category: Productivity
+icon: "🗃️"
+version: latest
+image: baserow/baserow:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: baserow-data
+    mount_path: /baserow/data
+    description: Baserow application data
+
+env_vars:
+  - key: BASEROW_PUBLIC_URL
+    description: Public URL of your Baserow instance (e.g. https://baserow.example.com)
+    default: ""
+    required: true
+  - key: SECRET_KEY
+    description: Django secret key
+    default: ""
+    required: true
+    secret: true
+  - key: DATABASE_URL
+    description: PostgreSQL connection string
+    default: postgresql://baserow:baserow_password@baserow-db:5432/baserow
+    required: false
+  - key: REDIS_URL
+    description: Redis connection string
+    default: redis://baserow-redis:6379/0
+    required: false
+  - key: EMAIL_SMTP_HOST
+    description: SMTP host for email
+    default: ""
+    required: false
+  - key: FROM_EMAIL
+    description: From address for emails
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/api/_health/"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: baserow-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: baserow
+      POSTGRES_USER: baserow
+      POSTGRES_PASSWORD: baserow_password
+    volumes:
+      - name: baserow-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U baserow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: baserow-redis
+    image: redis:7-alpine
+    optional: true
+    role: cache
+    volumes:
+      - name: baserow-redis-data
+        mount_path: /data
+        description: Redis data
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

@@ -1,0 +1,39 @@
+id: portainer
+name: Portainer
+description: Container management UI for Docker and Kubernetes
+category: DevOps
+icon: "🐳"
+version: latest
+image: portainer/portainer-ce:latest
+proxy_port: 9000
+
+ports:
+  - internal: 9000
+    external: 9000
+    protocol: tcp
+  - internal: 9443
+    external: 9443
+    protocol: tcp
+  - internal: 8000
+    external: 8000
+    protocol: tcp
+
+volumes:
+  - name: portainer-data
+    mount_path: /data
+    description: Portainer configuration and state
+  - name: docker-sock
+    mount_path: /var/run/docker.sock
+    description: Docker socket (read-only access to Docker daemon)
+
+env_vars:
+  - key: ADMIN_PASSWORD_FILE
+    description: Path to file containing the admin password hash
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:9000"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

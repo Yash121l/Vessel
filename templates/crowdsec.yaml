@@ -1,0 +1,48 @@
+id: crowdsec
+name: CrowdSec
+description: Collaborative, open-source security engine for threat detection and blocking
+category: Security
+icon: "🚨"
+version: latest
+image: crowdsecurity/crowdsec:latest
+proxy_port: 8080
+
+ports:
+  - internal: 8080
+    external: 8080
+    protocol: tcp
+  - internal: 6060
+    external: 6060
+    protocol: tcp
+
+volumes:
+  - name: crowdsec-config
+    mount_path: /etc/crowdsec
+    description: CrowdSec configuration and scenarios
+  - name: crowdsec-data
+    mount_path: /var/lib/crowdsec/data
+    description: CrowdSec database and decisions
+  - name: crowdsec-logs
+    mount_path: /var/log
+    description: Log files to monitor
+
+env_vars:
+  - key: COLLECTIONS
+    description: Space-separated list of CrowdSec collections to install
+    default: "crowdsecurity/linux crowdsecurity/nginx"
+    required: false
+  - key: GID
+    description: Group ID for the crowdsec process
+    default: "1000"
+    required: false
+  - key: BOUNCER_KEY_firewall
+    description: API key for the firewall bouncer
+    default: ""
+    required: false
+    secret: true
+
+health_check:
+  test: ["CMD", "cscli", "version"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

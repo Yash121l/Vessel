@@ -1,0 +1,56 @@
+id: nginx-proxy-manager
+name: Nginx Proxy Manager
+description: Easy reverse proxy management with SSL via Let's Encrypt
+category: Networking
+icon: "🔀"
+version: latest
+image: jc21/nginx-proxy-manager:latest
+proxy_port: 81
+
+ports:
+  - internal: 80
+    external: 80
+    protocol: tcp
+  - internal: 443
+    external: 443
+    protocol: tcp
+  - internal: 81
+    external: 81
+    protocol: tcp
+
+volumes:
+  - name: npm-data
+    mount_path: /data
+    description: Nginx Proxy Manager configuration and certificates
+  - name: npm-letsencrypt
+    mount_path: /etc/letsencrypt
+    description: Let's Encrypt certificates
+
+env_vars:
+  - key: DB_MYSQL_HOST
+    description: MySQL host (leave empty to use built-in SQLite)
+    default: ""
+    required: false
+  - key: DB_MYSQL_PORT
+    description: MySQL port
+    default: "3306"
+    required: false
+  - key: DB_MYSQL_USER
+    description: MySQL username
+    default: npm
+    required: false
+  - key: DB_MYSQL_PASSWORD
+    description: MySQL password
+    default: ""
+    required: false
+    secret: true
+  - key: DB_MYSQL_NAME
+    description: MySQL database name
+    default: npm
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:81"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

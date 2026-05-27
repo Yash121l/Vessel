@@ -1,0 +1,42 @@
+id: ollama
+name: Ollama
+description: Run large language models locally with a simple API
+category: AI
+icon: "🦙"
+version: latest
+image: ollama/ollama:latest
+proxy_port: 11434
+
+ports:
+  - internal: 11434
+    external: 11434
+    protocol: tcp
+
+volumes:
+  - name: ollama-data
+    mount_path: /root/.ollama
+    description: Ollama model storage
+
+env_vars:
+  - key: OLLAMA_HOST
+    description: Host and port to bind to
+    default: "0.0.0.0:11434"
+    required: false
+  - key: OLLAMA_MODELS
+    description: Path to model storage directory
+    default: /root/.ollama/models
+    required: false
+  - key: OLLAMA_NUM_PARALLEL
+    description: Maximum number of parallel requests
+    default: "1"
+    required: false
+  - key: OLLAMA_MAX_LOADED_MODELS
+    description: Maximum number of models loaded in memory
+    default: "1"
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

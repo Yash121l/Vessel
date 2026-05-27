@@ -1,0 +1,49 @@
+id: navidrome
+name: Navidrome
+description: Self-hosted music server and streamer compatible with Subsonic/Airsonic
+category: Media
+icon: "🎵"
+version: latest
+image: deluan/navidrome:latest
+proxy_port: 4533
+
+ports:
+  - internal: 4533
+    external: 4533
+    protocol: tcp
+
+volumes:
+  - name: navidrome-data
+    mount_path: /data
+    description: Navidrome database and configuration
+  - name: navidrome-music
+    mount_path: /music
+    description: Music library (read-only)
+
+env_vars:
+  - key: ND_SCANSCHEDULE
+    description: Cron schedule for library scans (e.g. @every 1h)
+    default: "@every 1h"
+    required: false
+  - key: ND_LOGLEVEL
+    description: Log level (error, warn, info, debug, trace)
+    default: info
+    required: false
+  - key: ND_SESSIONTIMEOUT
+    description: Session timeout duration
+    default: 24h
+    required: false
+  - key: ND_BASEURL
+    description: Base URL path (e.g. /music)
+    default: ""
+    required: false
+  - key: ND_ENABLETRANSCODINGCONFIG
+    description: Allow users to configure transcoding
+    default: "false"
+    required: false
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:4533/ping"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

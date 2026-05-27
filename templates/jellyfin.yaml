@@ -1,0 +1,43 @@
+id: jellyfin
+name: Jellyfin
+description: Free and open-source media server
+category: Media
+icon: "🎬"
+version: latest
+image: jellyfin/jellyfin:latest
+proxy_port: 8096
+
+ports:
+  - internal: 8096
+    external: 8096
+    protocol: tcp
+  - internal: 8920
+    external: 8920
+    protocol: tcp
+
+volumes:
+  - name: jellyfin-config
+    mount_path: /config
+    description: Jellyfin configuration and metadata
+  - name: jellyfin-cache
+    mount_path: /cache
+    description: Jellyfin transcoding cache
+  - name: jellyfin-media
+    mount_path: /media
+    description: Media library (movies, TV, music)
+
+env_vars:
+  - key: JELLYFIN_PublishedServerUrl
+    description: Public URL for server discovery
+    default: ""
+    required: false
+  - key: TZ
+    description: Timezone
+    default: UTC
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:8096/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

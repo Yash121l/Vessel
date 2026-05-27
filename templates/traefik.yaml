@@ -1,0 +1,62 @@
+id: traefik
+name: Traefik
+description: Modern reverse proxy and load balancer with automatic SSL
+category: Networking
+icon: "🔁"
+version: latest
+image: traefik:latest
+proxy_port: 8080
+
+ports:
+  - internal: 80
+    external: 80
+    protocol: tcp
+  - internal: 443
+    external: 443
+    protocol: tcp
+  - internal: 8080
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: traefik-config
+    mount_path: /etc/traefik
+    description: Traefik static and dynamic configuration
+  - name: traefik-certs
+    mount_path: /certs
+    description: TLS certificate storage
+  - name: docker-sock
+    mount_path: /var/run/docker.sock
+    description: Docker socket for service discovery
+
+env_vars:
+  - key: TRAEFIK_API_INSECURE
+    description: Enable insecure API/dashboard (disable in production)
+    default: "true"
+    required: false
+  - key: TRAEFIK_PROVIDERS_DOCKER
+    description: Enable Docker provider
+    default: "true"
+    required: false
+  - key: TRAEFIK_ENTRYPOINTS_WEB_ADDRESS
+    description: HTTP entrypoint address
+    default: ":80"
+    required: false
+  - key: TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS
+    description: HTTPS entrypoint address
+    default: ":443"
+    required: false
+  - key: TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL
+    description: Email for Let's Encrypt notifications
+    default: ""
+    required: false
+  - key: TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_STORAGE
+    description: Path to ACME certificate storage
+    default: /certs/acme.json
+    required: false
+
+health_check:
+  test: ["CMD", "traefik", "healthcheck"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

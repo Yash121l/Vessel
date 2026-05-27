@@ -1,0 +1,79 @@
+id: keycloak
+name: Keycloak
+description: Enterprise-grade open-source identity and access management with SSO
+category: Security
+icon: "🗝️"
+version: latest
+image: quay.io/keycloak/keycloak:latest
+proxy_port: 8080
+
+ports:
+  - internal: 8080
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: keycloak-data
+    mount_path: /opt/keycloak/data
+    description: Keycloak realm and user data
+
+env_vars:
+  - key: KEYCLOAK_ADMIN
+    description: Initial admin username
+    default: admin
+    required: false
+  - key: KEYCLOAK_ADMIN_PASSWORD
+    description: Initial admin password
+    default: ""
+    required: true
+    secret: true
+  - key: KC_DB
+    description: "Database type: postgres, mysql, or dev-file"
+    default: postgres
+    required: false
+  - key: KC_DB_URL
+    description: JDBC database URL
+    default: jdbc:postgresql://keycloak-db:5432/keycloak
+    required: false
+  - key: KC_DB_USERNAME
+    description: Database username
+    default: keycloak
+    required: false
+  - key: KC_DB_PASSWORD
+    description: Database password
+    default: keycloak_password
+    required: false
+    secret: true
+  - key: KC_HOSTNAME
+    description: Public hostname (e.g. auth.example.com)
+    default: ""
+    required: false
+  - key: KC_PROXY
+    description: Proxy mode (edge, reencrypt, passthrough)
+    default: edge
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: keycloak-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_password
+    volumes:
+      - name: keycloak-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

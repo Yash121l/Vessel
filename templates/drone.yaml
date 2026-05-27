@@ -1,0 +1,83 @@
+id: drone
+name: Drone CI
+description: Container-native CI/CD platform with YAML-based pipelines
+category: DevOps
+icon: "🚁"
+version: latest
+image: drone/drone:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+  - internal: 443
+    external: 8443
+    protocol: tcp
+
+volumes:
+  - name: drone-data
+    mount_path: /data
+    description: Drone server data and SQLite database
+
+env_vars:
+  - key: DRONE_GITEA_SERVER
+    description: Gitea server URL
+    default: ""
+    required: false
+  - key: DRONE_GITEA_CLIENT_ID
+    description: Gitea OAuth2 client ID
+    default: ""
+    required: false
+  - key: DRONE_GITEA_CLIENT_SECRET
+    description: Gitea OAuth2 client secret
+    default: ""
+    required: false
+    secret: true
+  - key: DRONE_GITHUB_CLIENT_ID
+    description: GitHub OAuth2 client ID
+    default: ""
+    required: false
+  - key: DRONE_GITHUB_CLIENT_SECRET
+    description: GitHub OAuth2 client secret
+    default: ""
+    required: false
+    secret: true
+  - key: DRONE_RPC_SECRET
+    description: Shared secret between server and runners
+    default: ""
+    required: true
+    secret: true
+  - key: DRONE_SERVER_HOST
+    description: Public hostname of your Drone instance
+    default: ""
+    required: true
+  - key: DRONE_SERVER_PROTO
+    description: Protocol (http or https)
+    default: http
+    required: false
+  - key: DRONE_USER_CREATE
+    description: Bootstrap admin user (username:admin,admin:true)
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/healthz"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+
+extra_services:
+  - name: drone-runner
+    image: drone/drone-runner-docker:latest
+    optional: true
+    role: runner
+    environment:
+      DRONE_RPC_PROTO: http
+      DRONE_RPC_HOST: drone-server
+      DRONE_RPC_SECRET: ""
+      DRONE_RUNNER_CAPACITY: "2"
+    volumes:
+      - name: docker-sock
+        mount_path: /var/run/docker.sock
+        description: Docker socket for running pipeline steps

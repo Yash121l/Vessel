@@ -1,0 +1,30 @@
+id: homeassistant
+name: Home Assistant
+description: Open-source home automation platform
+category: Home Automation
+icon: "🏠"
+version: latest
+image: ghcr.io/home-assistant/home-assistant:stable
+proxy_port: 8123
+
+ports:
+  - internal: 8123
+    external: 8123
+    protocol: tcp
+
+volumes:
+  - name: homeassistant-config
+    mount_path: /config
+    description: Home Assistant configuration and automations
+
+env_vars:
+  - key: TZ
+    description: Timezone (e.g. America/New_York)
+    default: UTC
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:8123"]
+  interval: 30s
+  timeout: 10s
+  retries: 5

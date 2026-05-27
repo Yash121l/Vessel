@@ -1,0 +1,98 @@
+id: activepieces
+name: Activepieces
+description: Open-source no-code business automation tool
+category: Automation
+icon: "⚙️"
+version: latest
+image: activepieces/activepieces:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: activepieces-data
+    mount_path: /usr/src/app/data
+    description: Activepieces application data
+
+env_vars:
+  - key: AP_JWT_SECRET
+    description: JWT secret for authentication
+    default: ""
+    required: true
+    secret: true
+  - key: AP_ENCRYPTION_KEY
+    description: Encryption key for credentials (32 chars)
+    default: ""
+    required: true
+    secret: true
+  - key: AP_POSTGRES_HOST
+    description: PostgreSQL host
+    default: activepieces-db
+    required: false
+  - key: AP_POSTGRES_PORT
+    description: PostgreSQL port
+    default: "5432"
+    required: false
+  - key: AP_POSTGRES_DATABASE
+    description: PostgreSQL database name
+    default: activepieces
+    required: false
+  - key: AP_POSTGRES_USERNAME
+    description: PostgreSQL username
+    default: activepieces
+    required: false
+  - key: AP_POSTGRES_PASSWORD
+    description: PostgreSQL password
+    default: activepieces_password
+    required: false
+    secret: true
+  - key: AP_REDIS_URL
+    description: Redis connection string
+    default: redis://activepieces-redis:6379
+    required: false
+  - key: AP_FRONTEND_URL
+    description: Public URL of your Activepieces instance
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/api/v1/flags"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: activepieces-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: activepieces
+      POSTGRES_USER: activepieces
+      POSTGRES_PASSWORD: activepieces_password
+    volumes:
+      - name: activepieces-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U activepieces"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: activepieces-redis
+    image: redis:7-alpine
+    optional: true
+    role: cache
+    volumes:
+      - name: activepieces-redis-data
+        mount_path: /data
+        description: Redis data
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

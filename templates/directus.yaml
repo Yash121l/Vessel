@@ -1,0 +1,117 @@
+id: directus
+name: Directus
+description: Open-source headless CMS and data platform
+category: CMS
+icon: "🗂️"
+version: latest
+image: directus/directus:latest
+proxy_port: 8055
+
+ports:
+  - internal: 8055
+    external: 8055
+    protocol: tcp
+
+volumes:
+  - name: directus-uploads
+    mount_path: /directus/uploads
+    description: Directus file uploads
+  - name: directus-extensions
+    mount_path: /directus/extensions
+    description: Directus custom extensions
+
+env_vars:
+  - key: SECRET
+    description: Secret key for JWT and hashing
+    default: ""
+    required: true
+    secret: true
+  - key: ADMIN_EMAIL
+    description: Initial admin email
+    default: admin@directus.local
+    required: false
+  - key: ADMIN_PASSWORD
+    description: Initial admin password
+    default: ""
+    required: true
+    secret: true
+  - key: DB_CLIENT
+    description: "Database client: pg, mysql, sqlite3"
+    default: pg
+    required: false
+  - key: DB_HOST
+    description: Database host
+    default: directus-db
+    required: false
+  - key: DB_PORT
+    description: Database port
+    default: "5432"
+    required: false
+  - key: DB_DATABASE
+    description: Database name
+    default: directus
+    required: false
+  - key: DB_USER
+    description: Database username
+    default: directus
+    required: false
+  - key: DB_PASSWORD
+    description: Database password
+    default: directus_password
+    required: false
+    secret: true
+  - key: CACHE_ENABLED
+    description: Enable caching
+    default: "true"
+    required: false
+  - key: CACHE_STORE
+    description: Cache store (redis or memory)
+    default: redis
+    required: false
+  - key: REDIS
+    description: Redis connection string
+    default: redis://directus-redis:6379
+    required: false
+  - key: PUBLIC_URL
+    description: Public URL of your Directus instance
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:8055/server/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: directus-db
+    image: postgres:15-alpine
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: directus
+      POSTGRES_USER: directus
+      POSTGRES_PASSWORD: directus_password
+    volumes:
+      - name: directus-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U directus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: directus-redis
+    image: redis:7-alpine
+    optional: true
+    role: cache
+    volumes:
+      - name: directus-redis-data
+        mount_path: /data
+        description: Redis data
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

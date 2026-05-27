@@ -1,0 +1,33 @@
+id: kavita
+name: Kavita
+description: Self-hosted digital library for manga, comics, and books
+category: Media
+icon: "📚"
+version: latest
+image: jvmilazz0/kavita:latest
+proxy_port: 5000
+
+ports:
+  - internal: 5000
+    external: 5000
+    protocol: tcp
+
+volumes:
+  - name: kavita-config
+    mount_path: /kavita/config
+    description: Kavita configuration and database
+  - name: kavita-library
+    mount_path: /library
+    description: Manga, comics, and book library
+
+env_vars:
+  - key: TZ
+    description: Timezone
+    default: UTC
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3

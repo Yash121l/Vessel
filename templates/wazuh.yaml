@@ -1,0 +1,76 @@
+id: wazuh
+name: Wazuh
+description: Open-source security platform for threat detection and incident response
+category: Security
+icon: "🛡️"
+version: latest
+image: wazuh/wazuh-manager:latest
+proxy_port: 5601
+
+ports:
+  - internal: 1514
+    external: 1514
+    protocol: tcp
+  - internal: 1514
+    external: 1514
+    protocol: udp
+  - internal: 1515
+    external: 1515
+    protocol: tcp
+  - internal: 55000
+    external: 55000
+    protocol: tcp
+
+volumes:
+  - name: wazuh-manager-config
+    mount_path: /var/ossec/etc
+    description: Wazuh manager configuration
+  - name: wazuh-manager-logs
+    mount_path: /var/ossec/logs
+    description: Wazuh manager logs
+  - name: wazuh-manager-queue
+    mount_path: /var/ossec/queue
+    description: Wazuh manager queue
+  - name: wazuh-manager-var
+    mount_path: /var/ossec/var
+    description: Wazuh manager variable data
+
+env_vars:
+  - key: WAZUH_MANAGER_IP
+    description: Wazuh manager IP or hostname
+    default: ""
+    required: false
+  - key: API_USERNAME
+    description: Wazuh API username
+    default: wazuh-wui
+    required: false
+  - key: API_PASSWORD
+    description: Wazuh API password
+    default: ""
+    required: true
+    secret: true
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost:55000/"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: wazuh-indexer
+    image: wazuh/wazuh-indexer:latest
+    optional: true
+    role: indexer
+    volumes:
+      - name: wazuh-indexer-data
+        mount_path: /var/lib/wazuh-indexer
+        description: Wazuh indexer data
+
+  - name: wazuh-dashboard
+    image: wazuh/wazuh-dashboard:latest
+    optional: true
+    role: dashboard
+    ports:
+      - internal: 5601
+        external: 5601
+        protocol: tcp

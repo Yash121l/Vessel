@@ -1,0 +1,65 @@
+id: mailcow
+name: Mailcow
+description: Full-featured self-hosted email server suite (SMTP, IMAP, webmail)
+category: Email
+icon: "📧"
+version: latest
+image: mailcow/mailcow-dockerized:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+  - internal: 443
+    external: 8443
+    protocol: tcp
+  - internal: 25
+    external: 25
+    protocol: tcp
+  - internal: 465
+    external: 465
+    protocol: tcp
+  - internal: 587
+    external: 587
+    protocol: tcp
+  - internal: 993
+    external: 993
+    protocol: tcp
+  - internal: 995
+    external: 995
+    protocol: tcp
+
+volumes:
+  - name: mailcow-vmail
+    mount_path: /var/vmail
+    description: Mail storage
+  - name: mailcow-mysql
+    mount_path: /var/lib/mysql
+    description: MySQL database
+
+env_vars:
+  - key: MAILCOW_HOSTNAME
+    description: Primary mail hostname (e.g. mail.example.com)
+    default: ""
+    required: true
+  - key: DBPASS
+    description: MySQL database password
+    default: ""
+    required: true
+    secret: true
+  - key: DBROOT
+    description: MySQL root password
+    default: ""
+    required: true
+    secret: true
+  - key: TZ
+    description: Timezone
+    default: UTC
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/"]
+  interval: 60s
+  timeout: 30s
+  retries: 10

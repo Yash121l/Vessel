@@ -1,0 +1,83 @@
+id: leantime
+name: Leantime
+description: Open-source project management for non-project managers
+category: Productivity
+icon: "📌"
+version: latest
+image: leantime/leantime:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: leantime-public
+    mount_path: /var/www/html/public/userfiles
+    description: Leantime user uploaded files
+  - name: leantime-private
+    mount_path: /var/www/html/userfiles
+    description: Leantime private user files
+
+env_vars:
+  - key: LEAN_DB_HOST
+    description: MySQL/MariaDB host
+    default: leantime-db
+    required: false
+  - key: LEAN_DB_USER
+    description: Database username
+    default: leantime
+    required: false
+  - key: LEAN_DB_PASSWORD
+    description: Database password
+    default: leantime_password
+    required: false
+    secret: true
+  - key: LEAN_DB_DATABASE
+    description: Database name
+    default: leantime
+    required: false
+  - key: LEAN_APP_URL
+    description: Public URL of your Leantime instance
+    default: ""
+    required: false
+  - key: LEAN_SESSION_PASSWORD
+    description: Session encryption password
+    default: ""
+    required: true
+    secret: true
+  - key: LEAN_EMAIL_RETURN
+    description: From address for emails
+    default: ""
+    required: false
+  - key: LEAN_SMTP_HOST
+    description: SMTP host
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: leantime-db
+    image: mariadb:10.11
+    optional: true
+    role: database
+    environment:
+      MYSQL_DATABASE: leantime
+      MYSQL_USER: leantime
+      MYSQL_PASSWORD: leantime_password
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    volumes:
+      - name: leantime-db-data
+        mount_path: /var/lib/mysql
+        description: MariaDB data
+    health_check:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

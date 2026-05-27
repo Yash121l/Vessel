@@ -1,0 +1,75 @@
+id: seafile
+name: Seafile
+description: High-performance self-hosted file sync and share platform
+category: Storage
+icon: "🌊"
+version: latest
+image: seafileltd/seafile-mc:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+
+volumes:
+  - name: seafile-data
+    mount_path: /shared
+    description: Seafile libraries and configuration
+
+env_vars:
+  - key: DB_HOST
+    description: MySQL/MariaDB host
+    default: seafile-db
+    required: false
+  - key: DB_ROOT_PASSWD
+    description: MySQL root password
+    default: ""
+    required: true
+    secret: true
+  - key: SEAFILE_ADMIN_EMAIL
+    description: Admin email address
+    default: admin@seafile.local
+    required: false
+  - key: SEAFILE_ADMIN_PASSWORD
+    description: Admin password
+    default: ""
+    required: true
+    secret: true
+  - key: SEAFILE_SERVER_HOSTNAME
+    description: Public hostname (e.g. seafile.example.com)
+    default: ""
+    required: false
+  - key: TIME_ZONE
+    description: Timezone
+    default: UTC
+    required: false
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/api2/ping/"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+
+extra_services:
+  - name: seafile-db
+    image: mariadb:10.11
+    optional: true
+    role: database
+    environment:
+      MYSQL_ROOT_PASSWORD: seafile_root_password
+      MYSQL_LOG_CONSOLE: "true"
+    volumes:
+      - name: seafile-db-data
+        mount_path: /var/lib/mysql
+        description: MariaDB data
+    health_check:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: seafile-memcached
+    image: memcached:1.6-alpine
+    optional: true
+    role: cache

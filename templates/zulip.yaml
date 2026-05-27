@@ -1,0 +1,110 @@
+id: zulip
+name: Zulip
+description: Powerful open-source team chat with topic-based threading
+category: Communication
+icon: "💭"
+version: latest
+image: zulip/docker-zulip:latest
+proxy_port: 80
+
+ports:
+  - internal: 80
+    external: 8080
+    protocol: tcp
+  - internal: 443
+    external: 8443
+    protocol: tcp
+
+volumes:
+  - name: zulip-data
+    mount_path: /data
+    description: Zulip application data and uploads
+
+env_vars:
+  - key: SETTING_EXTERNAL_HOST
+    description: Public hostname (e.g. zulip.example.com)
+    default: ""
+    required: true
+  - key: SETTING_ZULIP_ADMINISTRATOR
+    description: Admin email address
+    default: ""
+    required: true
+  - key: SECRETS_email_password
+    description: SMTP password for outgoing email
+    default: ""
+    required: false
+    secret: true
+  - key: SETTING_EMAIL_HOST
+    description: SMTP host
+    default: ""
+    required: false
+  - key: SETTING_EMAIL_HOST_USER
+    description: SMTP username
+    default: ""
+    required: false
+  - key: SETTING_EMAIL_PORT
+    description: SMTP port
+    default: "587"
+    required: false
+  - key: SECRETS_secret_key
+    description: Django secret key
+    default: ""
+    required: true
+    secret: true
+  - key: POSTGRES_HOST
+    description: PostgreSQL host
+    default: zulip-db
+    required: false
+  - key: POSTGRES_PASSWORD
+    description: PostgreSQL password
+    default: zulip_password
+    required: false
+    secret: true
+
+health_check:
+  test: ["CMD", "curl", "-f", "http://localhost/"]
+  interval: 60s
+  timeout: 30s
+  retries: 10
+
+extra_services:
+  - name: zulip-db
+    image: zulip/zulip-postgresql:14
+    optional: true
+    role: database
+    environment:
+      POSTGRES_DB: zulip
+      POSTGRES_USER: zulip
+      POSTGRES_PASSWORD: zulip_password
+    volumes:
+      - name: zulip-db-data
+        mount_path: /var/lib/postgresql/data
+        description: PostgreSQL data
+    health_check:
+      test: ["CMD-SHELL", "pg_isready -U zulip"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: zulip-redis
+    image: redis:7-alpine
+    optional: true
+    role: cache
+    volumes:
+      - name: zulip-redis-data
+        mount_path: /data
+        description: Redis data
+    health_check:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  - name: zulip-rabbitmq
+    image: rabbitmq:3.12-management-alpine
+    optional: true
+    role: queue
+    volumes:
+      - name: zulip-rabbitmq-data
+        mount_path: /var/lib/rabbitmq
+        description: RabbitMQ data

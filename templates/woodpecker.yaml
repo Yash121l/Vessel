@@ -1,0 +1,80 @@
+id: woodpecker
+name: Woodpecker CI
+description: Simple and powerful CI/CD engine with Docker-based pipelines
+category: DevOps
+icon: "🪵"
+version: latest
+image: woodpeckerci/woodpecker-server:latest
+proxy_port: 8000
+
+ports:
+  - internal: 8000
+    external: 8000
+    protocol: tcp
+  - internal: 9000
+    external: 9000
+    protocol: tcp
+
+volumes:
+  - name: woodpecker-data
+    mount_path: /var/lib/woodpecker
+    description: Woodpecker server data and SQLite database
+
+env_vars:
+  - key: WOODPECKER_OPEN
+    description: Allow public registration
+    default: "false"
+    required: false
+  - key: WOODPECKER_HOST
+    description: Public URL of your Woodpecker instance
+    default: ""
+    required: true
+  - key: WOODPECKER_AGENT_SECRET
+    description: Shared secret between server and agents
+    default: ""
+    required: true
+    secret: true
+  - key: WOODPECKER_GITEA
+    description: Enable Gitea integration
+    default: "true"
+    required: false
+  - key: WOODPECKER_GITEA_URL
+    description: Gitea instance URL
+    default: ""
+    required: false
+  - key: WOODPECKER_GITEA_CLIENT
+    description: Gitea OAuth2 client ID
+    default: ""
+    required: false
+  - key: WOODPECKER_GITEA_SECRET
+    description: Gitea OAuth2 client secret
+    default: ""
+    required: false
+    secret: true
+  - key: WOODPECKER_DATABASE_DRIVER
+    description: "Database driver: sqlite3 or postgres"
+    default: sqlite3
+    required: false
+  - key: WOODPECKER_DATABASE_DATASOURCE
+    description: Database connection string (when using postgres)
+    default: ""
+    required: false
+
+health_check:
+  test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/healthz"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+
+extra_services:
+  - name: woodpecker-agent
+    image: woodpeckerci/woodpecker-agent:latest
+    optional: true
+    role: agent
+    environment:
+      WOODPECKER_SERVER: woodpecker-server:9000
+      WOODPECKER_AGENT_SECRET: ""
+    volumes:
+      - name: docker-sock
+        mount_path: /var/run/docker.sock
+        description: Docker socket for running pipeline steps
