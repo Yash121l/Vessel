@@ -774,7 +774,7 @@ function wizardStep2Content() {
     '</div>';
   }
 
-  return '<div style="max-width:680px">' +
+  return '<div>' +
     '<div style="margin-bottom:20px">' +
       '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Step 2 of 3</div>' +
       '<div style="font-weight:700;font-size:16px">Configure ' + escHtml(app.name || app.id) + '</div>' +
@@ -921,7 +921,7 @@ function wizardStep3(){
     '</div>';
   }).join('');
 
-  return '<div style="max-width:800px">' +
+  return '<div>' +
     '<div style="margin-bottom:20px">' +
       '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Step 3 of 3</div>' +
       '<div style="font-weight:700;font-size:16px">Review & Deploy ' + escHtml(app.name || app.id) + '</div>' +
@@ -1343,7 +1343,7 @@ function deployTemplates(){
         '<div style="font-size:11px;color:var(--muted);margin-top:3px">'+(a.category||'')+'</div>'+
       '</div></label>').join('')+
     '</div>'+
-    '<div class="card" style="max-width:700px">'+
+    '<div class="card">'+
       '<div class="grid2">'+
         '<div class="fg"><label>Deployment Name *</label><input name="dname" placeholder="my-app" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required></div>'+
         '<div class="fg"><label>Custom Domain (optional)</label><input name="domain" placeholder="app.example.com"></div>'+
@@ -1477,7 +1477,7 @@ function deployCustomForm(){
     '<a href="https://hub.docker.com/r/'+escHtml(sel.slug)+'" target="_blank" class="btn btn-xs" style="display:flex;align-items:center;gap:4px">'+ico('external-link',11)+' Hub</a>'+
     '<button class="btn btn-xs" onclick="clearHubSelection()">Change</button>':'';
   return'<form onsubmit="deployCustom(event)">'+
-    '<div class="card" style="max-width:800px">'+
+    '<div class="card">'+
       searchSection+
       '<div id="hub-selected-banner" style="display:'+bannerDisplay+';align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--r);padding:12px 16px;margin-bottom:16px">'+
         bannerContent+
@@ -1597,14 +1597,14 @@ function deployComposeForm(){
     '</div>';
   }
   return'<form onsubmit="deployComposeStack(event)">'+
-    '<div class="card" style="max-width:860px;margin-bottom:16px">'+
+    '<div class="card" style="margin-bottom:16px">'+
       '<div style="font-weight:700;font-size:14px;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ico('layers',15,'var(--accent)')+'Stack Settings</div>'+
       '<div class="grid2">'+
         '<div class="fg"><label>Stack Name *</label><input name="csname" placeholder="my-stack" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" value="'+escHtml(S.csName)+'" oninput="S.csName=this.value" required></div>'+
         '<div class="fg"><label>Custom Domain (optional)</label><input name="csdomain" placeholder="app.example.com" value="'+escHtml(S.csDomain)+'" onfocus="ensureSystemIP()" oninput="S.csDomain=this.value;S.dnsCheck=null;const box=document.getElementById(\'compose-dns-box\');if(box)box.innerHTML=dnsGuidanceBox(S.csDomain)"><div id="compose-dns-box">'+dnsGuidanceBox(S.csDomain)+'</div></div>'+
       '</div>'+
     '</div>'+
-    '<div class="card" style="max-width:860px;margin-bottom:16px">'+
+    '<div class="card" style="margin-bottom:16px">'+
       '<div style="font-weight:700;font-size:14px;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ico('rocket',15,'var(--accent)')+'Primary Service</div>'+
       '<div class="grid2">'+
         '<div class="fg"><label>Image *</label><input name="cspimage" placeholder="nginx:latest, myorg/myapp:1.0" value="'+escHtml(S.csPrimaryImage)+'" oninput="S.csPrimaryImage=this.value" required></div>'+
@@ -1646,7 +1646,7 @@ function deployComposeForm(){
       '<div class="fg"><label>Environment Variables (KEY=VALUE, one per line)</label>'+
         '<textarea rows="4" placeholder="APP_ENV=production&#10;DATABASE_URL=postgres://..." style="font-family:var(--mono);font-size:12px" oninput="S.csPrimaryEnv=this.value">'+escHtml(S.csPrimaryEnv)+'</textarea></div>'+
     '</div>'+
-    '<div style="max-width:860px">'+
+    '<div>'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
         '<div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px">'+ico('box',15,'var(--accent2)')+'Sidecar Services</div>'+
         '<button type="button" class="btn btn-sm" onclick="S.csSidecars.push({name:\'\',image:\'\',env:\'\',volumes:[{name:\'\',mount:\'\'}],healthTest:\'\',ports:[{internal:\'\',external:\'\',protocol:\'tcp\'}]});render()" style="display:flex;align-items:center;gap:5px">'+ico('plus',12)+' Add Sidecar</button>'+
@@ -1657,7 +1657,7 @@ function deployComposeForm(){
           '<div style="font-size:13px">No sidecars yet — add a database, cache, or worker service</div>'+
         '</div>')+
     '</div>'+
-    '<div style="max-width:860px;display:flex;gap:8px;justify-content:flex-end;margin-top:20px">'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">'+
       '<button type="button" class="btn" onclick="nav(\'containers\')">Cancel</button>'+
       '<button type="submit" class="btn-primary" style="display:flex;align-items:center;gap:6px"'+(S.deploying?' disabled':'')+'>'+
         (S.deploying?ico('loader',13)+' Deploying...':ico('layers',13)+' Deploy Stack')+'</button>'+
@@ -1911,7 +1911,7 @@ function pageLogs(){
 function pageSettings(){
   function row(l,v){return'<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted);font-size:13px">'+l+'</span><code style="font-family:var(--mono);font-size:12px;color:var(--accent2)">'+v+'</code></div>'}
   const upd=S.updateLog!==undefined;
-  const updateCard='<div class="card" style="max-width:680px;margin-bottom:24px">'+
+  const updateCard='<div class="card" style="margin-bottom:24px">'+
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'+
       '<div>'+
         '<div style="font-weight:700;font-size:15px">Update Vessel</div>'+
@@ -1926,7 +1926,7 @@ function pageSettings(){
   return'<div>'+
     '<div style="margin-bottom:24px"><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Settings</h1></div>'+
     updateCard+
-    '<div class="card" style="max-width:680px;margin-bottom:24px">'+
+    '<div class="card" style="margin-bottom:24px">'+
       row('Signed in as',escHtml((S.currentUser&&S.currentUser.username)||''))+
       row('Role',escHtml((S.currentUser&&S.currentUser.role)||''))+
       row('Version',escHtml(S.serverVersion||'—'))+row('Data directory','/var/lib/vessel')+
@@ -1976,7 +1976,7 @@ function usersPanel(){
       '<td style="text-align:right">'+(editable?'<button class="btn btn-sm" onclick="updateUser(\''+u.id+'\')">Save</button> <button class="btn-danger btn-sm" onclick="deleteUser(\''+u.id+'\',\''+escAttr(u.username)+'\')">Delete</button>':'')+'</td>'+
     '</tr>';
   }).join('');
-  return'<div class="card" style="max-width:900px">'+
+  return'<div class="card">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
       '<div><div style="font-weight:700;font-size:15px">Users & Permissions</div>'+
       '<div style="font-size:12px;color:var(--muted);margin-top:3px">Viewer can inspect, operator can deploy/manage apps, admin can manage host settings, owner can manage every role.</div></div>'+
