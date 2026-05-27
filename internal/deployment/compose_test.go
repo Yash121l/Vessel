@@ -64,3 +64,32 @@ func TestProxyTargetPortUsesExternalPortForCaddy(t *testing.T) {
 		t.Fatalf("proxyTargetPort() = %d, want 13000", got)
 	}
 }
+
+func TestGenerateComposeSkipsOptionalService(t *testing.T) {
+	tmpl := &registry.AppTemplate{
+		ID:    "demo",
+		Name:  "Demo",
+		Image: "demo/app:latest",
+		EnvVars: []registry.EnvVar{
+			{Key: "DATABASE_HOST", Default: "demo-db"},
+		},
+		ExtraServices: []registry.ServiceDef{
+			{Name: "demo-db", Image: "postgres:16", Optional: true, Role: "database"},
+		},
+	}
+	deployment := &store.Deployment{
+		Name: "demo-app",
+		Env:  map[string]string{"DATABASE_HOST": "external-db.example.com"},
+	}
+
+	cf, err := GenerateCompose(tmpl, deployment, map[string]bool{"demo-db": true})
+	if err != nil {
+		t.Fatalf("GenerateCompose() error = %v", err)
+	}
+	if _, ok := cf.Services["demo-app-demo-db"]; ok {
+		t.Fatalf("skipped service was still generated")
+	}
+	if got := cf.Services["demo-app"].Environment["DATABASE_HOST"]; got != "external-db.example.com" {
+		t.Fatalf("DATABASE_HOST = %q, want external host", got)
+	}
+}

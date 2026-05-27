@@ -1,6 +1,7 @@
 vessel
 dist/
 tmp/
+docs/templates/
 *.db
 *.db-shm
 *.db-wal

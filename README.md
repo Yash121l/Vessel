@@ -25,6 +25,7 @@ Vessel is an operating layer for self-hosted apps on a VPS. It:
 
 - Bootstraps your server (Docker, Caddy, firewall)
 - Deploys apps from curated templates with one click
+- Pulls a public template catalog so new templates can be used without a binary upgrade
 - Generates Docker Compose files automatically
 - Configures Caddy reverse proxy with automatic HTTPS
 - Streams live logs from any deployment
@@ -36,9 +37,10 @@ Vessel is an operating layer for self-hosted apps on a VPS. It:
 
 ## Supported Apps
 
-The v0.1 path focuses on a small reliable catalog first. Additional templates can
-be added from `/var/lib/vessel/templates`, but new built-ins should be verified on
-a real VPS before being treated as stable.
+Vessel ships with an embedded YAML catalog and can also pull the latest public
+catalog from GitHub Pages at startup. Additional local templates can be added
+from `/var/lib/vessel/templates`; local templates override bundled and remote
+templates with the same ID.
 
 | App | Category | Description |
 |-----|----------|-------------|
@@ -79,7 +81,7 @@ vessel/
 │       ├── server.go           # HTTP server setup + graceful shutdown
 │       ├── routes.go           # REST API handlers
 │       └── ui.go               # Embedded single-page UI
-├── templates/                  # YAML app templates
+├── internal/registry/templates/ # Single source for app YAML templates
 │   ├── metabase.yaml
 │   ├── n8n.yaml
 │   ├── umami.yaml
@@ -90,6 +92,21 @@ vessel/
 ├── vessel.service              # systemd unit file
 └── Makefile
 ```
+
+The GitHub Pages site lives in `docs/`. The Pages workflow publishes docs plus a
+runtime template catalog at `templates/index.json`, generated from
+`internal/registry/templates/`.
+
+### Template Contribution Flow
+
+Add or update one YAML file in `internal/registry/templates/`. That single file
+is embedded in new binaries and published to GitHub Pages for existing installs.
+The remote catalog includes the YAML payload in `index.json`, so Vessel normally
+needs one small HTTP request at startup instead of fetching every template file
+one by one. Local templates in `/var/lib/vessel/templates` still override bundled
+and remote entries for private or experimental deployments.
+
+See `CONTRIBUTING.md` for the full template checklist.
 
 ---
 
@@ -171,6 +188,8 @@ Environment variable overrides:
 - `VESSEL_CONFIG` — path to config file
 - `VESSEL_PORT` — UI port
 - `VESSEL_DATA_DIR` — data directory
+- `VESSEL_TEMPLATE_CATALOG_URL` — remote template catalog URL
+- `VESSEL_TEMPLATE_CATALOG_DISABLED=1` — skip remote template loading
 
 ---
 

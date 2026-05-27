@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vessel - self-hosted app deployment manager</title>
+  <style>
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f7f8fb;color:#101827;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5}a{color:inherit;text-decoration:none}.wrap{max-width:1180px;margin:0 auto;padding:0 24px}.nav{position:sticky;top:0;z-index:20;border-bottom:1px solid rgba(16,24,39,.08);background:rgba(247,248,251,.86);backdrop-filter:blur(16px)}.nav .wrap{height:64px;display:flex;align-items:center;justify-content:space-between}.brand{display:flex;align-items:center;gap:10px;font-weight:800}.mark{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;background:#101827;color:white}.links{display:flex;align-items:center;gap:22px;color:#526174;font-size:14px}.button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 16px;border-radius:8px;border:1px solid #101827;background:#101827;color:white;font-weight:700;font-size:14px}.button.secondary{background:#fff;color:#101827;border-color:#d9e1ec}.hero{min-height:calc(100svh - 104px);display:grid;align-items:end;position:relative;overflow:hidden;background-image:linear-gradient(90deg,rgba(247,248,251,.98) 0%,rgba(247,248,251,.9) 34%,rgba(247,248,251,.2) 78%),url("assets/hero-dashboard.png");background-size:cover;background-position:center right}.hero .wrap{width:100%;padding-top:70px;padding-bottom:72px}.eyebrow{display:inline-flex;gap:8px;align-items:center;margin-bottom:20px;padding:6px 10px;border:1px solid #d9e1ec;border-radius:999px;background:rgba(255,255,255,.72);color:#526174;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.pulse{width:8px;height:8px;border-radius:50%;background:#13b981;box-shadow:0 0 0 5px rgba(19,185,129,.13)}h1{max-width:720px;margin:0;font-size:clamp(50px,9vw,108px);line-height:.88;letter-spacing:0;color:#0b1220}h2{margin:0 0 14px;font-size:clamp(30px,4vw,48px);line-height:1;letter-spacing:0}.lead{max-width:620px;margin:24px 0 0;color:#4a596d;font-size:19px}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}.hero-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin-top:54px;max-width:760px;border:1px solid rgba(16,24,39,.08);border-radius:8px;overflow:hidden;background:#dbe3ef}.metric{background:rgba(255,255,255,.82);padding:16px}.metric strong{display:block;font-size:20px}.metric span{display:block;color:#64748b;font-size:12px;margin-top:2px}.section{padding:92px 0;border-top:1px solid #dfe6ef}.section.dark{background:#101827;color:white;border-top:0}.section.dark p,.section.dark .muted{color:#a8b3c4}.split{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:44px;align-items:start}.muted{color:#5c6b7e}.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.card{border:1px solid #dce4ef;background:#fff;border-radius:8px;padding:22px}.card h3{margin:0 0 8px;font-size:17px}.card p{margin:0;color:#59687b}.dark .card{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.06)}.dark .card p{color:#a8b3c4}.code{border:1px solid rgba(255,255,255,.13);border-radius:8px;background:#0b111d;overflow:hidden}.code-head{display:flex;align-items:center;gap:7px;padding:13px 16px;border-bottom:1px solid rgba(255,255,255,.1)}.dot{width:10px;height:10px;border-radius:50%;background:#ff5f56}.dot:nth-child(2){background:#ffbd2e}.dot:nth-child(3){background:#27c93f}pre{margin:0;padding:18px;overflow:auto;color:#d7e3f2;font:13px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.cyan{color:#77d5ff}.green{color:#7ee787}.catalog-head{display:flex;align-items:end;justify-content:space-between;gap:24px;margin-bottom:22px}.filters{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 24px}.chip{border:1px solid #d9e1ec;border-radius:999px;background:white;color:#526174;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer}.chip.on{background:#101827;border-color:#101827;color:white}.templates{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}.template{display:block;border:1px solid #dce4ef;background:white;border-radius:8px;padding:15px;min-height:116px}.template .top{display:flex;justify-content:space-between;gap:12px}.template strong{font-size:15px}.template small{display:block;margin-top:8px;color:#66758a}.template span{display:inline-flex;margin-top:12px;color:#206ccf;font-size:12px;font-weight:800}.flow{display:grid;gap:12px}.step{display:grid;grid-template-columns:40px 1fr;gap:14px}.num{width:40px;height:40px;border-radius:8px;background:#e8f1fb;color:#206ccf;display:grid;place-items:center;font-weight:900}.footer{padding:34px 0;border-top:1px solid #dfe6ef;color:#66758a}.footer .wrap{display:flex;align-items:center;justify-content:space-between;gap:20px}.empty{padding:20px;border:1px dashed #cbd5e1;border-radius:8px;color:#64748b;background:white}@media(max-width:880px){.links{display:none}.hero{min-height:auto;background-position:56% center}.hero .wrap{padding-top:54px}.hero-strip,.split,.grid3{grid-template-columns:1fr}h1{font-size:58px}.footer .wrap{display:block}.catalog-head{display:block}}
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a class="brand" href="#"><span class="mark">V</span><span>Vessel</span></a>
+      <div class="links">
+        <a href="#platform">Platform</a>
+        <a href="#catalog">Catalog</a>
+        <a href="#architecture">Architecture</a>
+        <a class="button secondary" href="https://github.com/Yash121l/Vessel">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <span class="eyebrow"><span class="pulse"></span> Live template catalog for self-hosters</span>
+        <h1>Ship self-hosted apps from one tiny control plane.</h1>
+        <p class="lead">Vessel turns YAML templates into Docker Compose deployments, proxy routes, logs, and lifecycle controls without asking every server to upgrade for every new app.</p>
+        <div class="actions">
+          <a class="button" href="#catalog">Explore templates</a>
+          <a class="button secondary" href="#architecture">See architecture</a>
+        </div>
+        <div class="hero-strip" aria-label="Vessel project stats">
+          <div class="metric"><strong id="metric-count">50+</strong><span>deployable templates</span></div>
+          <div class="metric"><strong>1 file</strong><span>to add a new app</span></div>
+          <div class="metric"><strong>1 request</strong><span>to refresh catalog</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="platform" class="section">
+      <div class="wrap">
+        <div class="split">
+          <div>
+            <h2>A practical app layer for a Linux VPS.</h2>
+            <p class="muted">Vessel keeps the runtime small: a Go binary, SQLite metadata, Docker Compose files on disk, and a public catalog served by GitHub Pages.</p>
+          </div>
+          <div class="grid3">
+            <article class="card"><h3>Compose-aware deploys</h3><p>Preview the main app and sidecars before anything is created.</p></article>
+            <article class="card"><h3>External services</h3><p>Skip optional bundled databases and point apps at managed infrastructure.</p></article>
+            <article class="card"><h3>Low maintenance</h3><p>New templates can appear in existing installs through the remote catalog.</p></article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture" class="section dark">
+      <div class="wrap split">
+        <div>
+          <h2>Single-source templates, cloud-served updates.</h2>
+          <p class="muted">Contributors add one YAML file under <strong>internal/registry/templates</strong>. Release binaries embed that same catalog, while GitHub Pages publishes a compact JSON index containing the YAML payload, metadata, and hashes.</p>
+          <div class="flow" style="margin-top:26px">
+            <div class="step"><div class="num">1</div><p class="muted">A contributor opens a PR with one template YAML file.</p></div>
+            <div class="step"><div class="num">2</div><p class="muted">Pages builds <strong>templates/index.json</strong> from that source folder.</p></div>
+            <div class="step"><div class="num">3</div><p class="muted">Running Vessel servers fetch one small catalog and merge it over the embedded fallback.</p></div>
+          </div>
+        </div>
+        <div class="code">
+          <div class="code-head"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <pre><span class="cyan">internal/registry/templates/n8n.yaml</span>
+id: n8n
+name: n8n
+category: Automation
+image: n8nio/n8n:latest
+
+extra_services:
+  - name: n8n-db
+    role: database
+    optional: true
+
+<span class="green"># Published by GitHub Pages</span>
+GET /Vessel/templates/index.json</pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="catalog" class="section">
+      <div class="wrap">
+        <div class="catalog-head">
+          <div>
+            <h2>Template catalog</h2>
+            <p class="muted">The same catalog powers this website and the Vessel app.</p>
+          </div>
+          <a class="button secondary" href="templates/index.json">Open catalog JSON</a>
+        </div>
+        <div id="filters" class="filters"></div>
+        <div id="template-list" class="templates"><div class="empty">Loading templates...</div></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <span>MIT licensed. Built for small VPS servers.</span>
+      <a href="https://github.com/Yash121l/Vessel">github.com/Yash121l/Vessel</a>
+    </div>
+  </footer>
+
+  <script>
+    let allTemplates=[];
+    let activeCategory='All';
+    fetch('templates/index.json').then(r=>r.json()).then(d=>{
+      allTemplates=d.templates||[];
+      document.getElementById('metric-count').textContent=allTemplates.length+'+';
+      renderFilters();
+      renderTemplates();
+    }).catch(()=>{
+      document.getElementById('template-list').innerHTML='<div class="empty">The generated catalog is not present. Run <strong>node scripts/build-template-catalog.mjs</strong> locally, or view the deployed GitHub Pages site.</div>';
+    });
+    function renderFilters(){
+      const cats=['All',...Array.from(new Set(allTemplates.map(t=>t.category||'Other'))).sort()];
+      const filters=document.getElementById('filters');
+      filters.innerHTML=cats.map(c=>'<button class="chip '+(c===activeCategory?'on':'')+'" data-category="'+escapeAttr(c)+'">'+escapeHtml(c)+'</button>').join('');
+      filters.querySelectorAll('button').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+          activeCategory=btn.dataset.category;
+          renderFilters();
+          renderTemplates();
+        });
+      });
+    }
+    function renderTemplates(){
+      const visible=allTemplates.filter(t=>activeCategory==='All'||(t.category||'Other')===activeCategory);
+      document.getElementById('template-list').innerHTML=visible.map(t=>
+        '<a class="template" href="'+escapeAttr(t.url)+'"><div class="top"><strong>'+escapeHtml(t.name||t.id)+'</strong><span>'+escapeHtml(t.icon||'')+'</span></div><small>'+escapeHtml(t.description||t.image||'')+'</small><span>'+escapeHtml(t.category||'Template')+'</span></a>'
+      ).join('');
+    }
+    function escapeHtml(s){return String(s||'').replace(/[&<>]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]))}
+    function escapeAttr(s){return escapeHtml(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+  </script>
+</body>
+</html>

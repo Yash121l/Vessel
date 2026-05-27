@@ -177,6 +177,7 @@ let S={
   editingSite:null,editingContent:'',newSiteMode:false,
   logs:'',logsTarget:null,logsEs:null,
   deploying:false,error:null,
+  templateSkipServices:{},templateEnvDraft:{},
   updating:false,updateLog:null,
   hubQuery:'',hubResults:[],hubSearching:false,hubSelected:null,
   customPorts:[{internal:'',external:'',protocol:'tcp'}],
@@ -290,9 +291,10 @@ async function remove(id,name){
 async function deploy(e){
   e.preventDefault();const f=e.target,env={};
   [...f.elements].forEach(el=>{if(el.name&&el.name.startsWith('env_'))env[el.name.slice(4)]=el.value});
+  const skipServices=[...f.elements].filter(el=>el.name&&el.name.startsWith('skip_service_')&&el.checked).map(el=>el.value);
   set({deploying:true,error:null});
   try{
-    await api('POST','/deployments',{app_id:f.app_id.value,name:f.dname.value,domain:f.domain.value,env});
+    await api('POST','/deployments',{app_id:f.app_id.value,name:f.dname.value,domain:f.domain.value,env,skip_services:skipServices});
     await load();set({page:'containers',deploying:false});
   }catch(e){set({deploying:false,error:e.message})}
 }
@@ -439,6 +441,7 @@ function render(){
   const navItems=[
     {id:'containers',label:'Apps',icon:'layout-dashboard'},
     {id:'compose',label:'Compose',icon:'layers'},
+    {id:'nginx',label:'Nginx',icon:'globe'},
     {id:'deploy',label:'Deploy',icon:'rocket'},
     {id:'settings',label:'Settings',icon:'settings'},
   ];
@@ -746,7 +749,7 @@ function deployTemplates(){
         '<div class="fg"><label>Deployment Name *</label><input name="dname" placeholder="my-app" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required></div>'+
         '<div class="fg"><label>Custom Domain (optional)</label><input name="domain" placeholder="app.example.com"></div>'+
       '</div>'+
-      '<div id="env-fields" style="margin-bottom:16px">'+envFields(selected)+'</div>'+
+      '<div id="template-config" style="margin-bottom:16px">'+templateConfig(selected)+'</div>'+
       '<div style="display:flex;gap:8px;justify-content:flex-end">'+
         '<button type="button" class="btn" onclick="nav(\'containers\')">Cancel</button>'+
         '<button type="submit" class="btn-primary" style="display:flex;align-items:center;gap:6px"'+(S.deploying?' disabled':'')+'>'+
@@ -756,13 +759,61 @@ function deployTemplates(){
 }
 function selectApp(id){
   S.selectedApp=id;
+  S.templateSkipServices={};S.templateEnvDraft={};
   S.apps.forEach(a=>{const el=document.getElementById('ac-'+a.id);if(el)el.style.borderColor=a.id===id?'var(--accent)':'var(--border)'});
   const app=S.apps.find(a=>a.id===id);
-  const fields=document.getElementById('env-fields');
-  if(fields)fields.innerHTML=envFields(app);
+  const fields=document.getElementById('template-config');
+  if(fields)fields.innerHTML=templateConfig(app);
+}
+function templateConfig(app){
+  if(!app)return'<div style="background:var(--surface2);border-radius:var(--r);padding:14px 16px;color:var(--muted);font-size:13px">Choose a template to see the Compose plan and configure settings.</div>';
+  return servicePlan(app)+envFields(app);
+}
+function servicePlan(app){
+  const services=app.extra_services||[];
+  const skipped=S.templateSkipServices||{};
+  const managed=services.filter(s=>!skipped[s.name]);
+  return'<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:14px">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">'+
+      '<div><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Compose plan</div>'+
+      '<div style="font-size:12px;color:var(--muted2);margin-top:4px">Vessel will create '+(1+managed.length)+' service'+(managed.length?'s':'')+': '+escHtml([app.name||app.id].concat(managed.map(s=>s.name)).join(', '))+'</div></div>'+
+      '<span class="tag" style="background:var(--blue-dim);color:var(--blue)">'+(1+managed.length)+' services</span>'+
+    '</div>'+
+    (services.length?services.map(s=>serviceOption(s,skipped[s.name])).join(''):'<div style="font-size:12px;color:var(--muted)">No external services are required for this template.</div>')+
+  '</div>';
+}
+function serviceOption(s,skipped){
+  const optional=!!s.optional;
+  return'<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-top:1px solid var(--border)">'+
+    '<input type="checkbox" name="skip_service_'+escAttr(s.name)+'" value="'+escAttr(s.name)+'" '+(skipped?'checked':'')+' '+(!optional?'disabled':'')+
+      ' onchange="toggleTemplateService(\''+escAttr(s.name)+'\',this.checked)" style="width:auto;margin-top:3px">'+
+    '<div style="flex:1;min-width:0">'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+        '<span style="font-weight:600;font-size:13px">'+escHtml(s.name)+'</span>'+
+        '<span style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+escHtml(s.image||'')+'</span>'+
+        (s.role?'<span class="tag" style="background:var(--surface3);color:var(--muted2)">'+escHtml(s.role)+'</span>':'')+
+        (optional?'<span class="tag" style="background:var(--green-dim);color:var(--green)">optional</span>':'')+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--muted);margin-top:4px">'+
+        (optional?(skipped?'Skipped. Fill the matching environment fields below with your external host, URL, or credentials.':'Check to skip the Vessel-managed '+escHtml(s.role||'service')+' and use an external one.'):'Required for this template.')+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+function toggleTemplateService(name,skip){
+  S.templateEnvDraft=collectTemplateEnvDraft();
+  S.templateSkipServices=S.templateSkipServices||{};
+  if(skip)S.templateSkipServices[name]=true;else delete S.templateSkipServices[name];
+  const app=S.apps.find(a=>a.id===S.selectedApp);
+  const fields=document.getElementById('template-config');
+  if(fields)fields.innerHTML=templateConfig(app);
+}
+function collectTemplateEnvDraft(){
+  const draft={};
+  document.querySelectorAll('[name^="env_"]').forEach(el=>{draft[el.name.slice(4)]=el.value});
+  return draft;
 }
 function envFields(app){
-  if(!app)return'<div style="background:var(--surface2);border-radius:var(--r);padding:14px 16px;color:var(--muted);font-size:13px">Choose a template to configure its required settings.</div>';
   const vars=app.env_vars||[];
   if(!vars.length)return'';
   return'<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px">'+
@@ -770,7 +821,7 @@ function envFields(app){
     vars.map(e=>{
       const id='env_'+e.key;
       const type=e.secret?'password':'text';
-      const val=escAttr(e.default||'');
+      const val=escAttr((S.templateEnvDraft&&Object.prototype.hasOwnProperty.call(S.templateEnvDraft,e.key))?S.templateEnvDraft[e.key]:(e.default||''));
       return'<div class="fg" style="margin-bottom:12px">'+
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
           '<label style="margin-bottom:5px">'+e.key+(e.required?' *':'')+'</label>'+

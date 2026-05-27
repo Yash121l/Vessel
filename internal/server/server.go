@@ -32,6 +32,12 @@ func Start(cfg *config.Config, version string) error {
 
 	// Initialize registry
 	reg := registry.New()
+	if os.Getenv("VESSEL_TEMPLATE_CATALOG_DISABLED") != "1" {
+		catalogURL := os.Getenv("VESSEL_TEMPLATE_CATALOG_URL")
+		if err := reg.LoadFromRemote(catalogURL); err != nil {
+			fmt.Printf("warning: failed to load remote templates: %v\n", err)
+		}
+	}
 	if err := reg.LoadFromDir(cfg.TemplatesDir); err != nil {
 		fmt.Printf("warning: failed to load custom templates: %v\n", err)
 	}

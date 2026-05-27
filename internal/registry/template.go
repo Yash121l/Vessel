@@ -1,12 +1,23 @@
 package registry
 
 import (
+	"embed"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+//go:embed templates/*.yaml
+var embeddedTemplateFS embed.FS
+
+const DefaultRemoteCatalogURL = "https://yash121l.github.io/Vessel/templates/index.json"
 
 // EnvVar defines a required or optional environment variable for an app.
 type EnvVar struct {
@@ -78,10 +89,36 @@ type Registry struct {
 // New creates a Registry pre-loaded with built-in templates.
 func New() *Registry {
 	r := &Registry{templates: make(map[string]*AppTemplate)}
+	// Keep the hand-written Go definitions as a compatibility fallback. The
+	// YAML catalog is loaded next and is the source of truth for bundled apps.
 	for _, t := range builtinTemplates() {
 		r.templates[t.ID] = t
 	}
+	if err := r.LoadEmbedded(); err != nil {
+		fmt.Printf("warning: failed to load embedded templates: %v\n", err)
+	}
 	return r
+}
+
+// LoadEmbedded loads the YAML catalog bundled with the binary.
+func (r *Registry) LoadEmbedded() error {
+	entries, err := embeddedTemplateFS.ReadDir("templates")
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".yaml" {
+			continue
+		}
+		data, err := embeddedTemplateFS.ReadFile(filepath.Join("templates", e.Name()))
+		if err != nil {
+			return err
+		}
+		if err := r.registerYAML(e.Name(), data); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // LoadFromDir loads additional YAML templates from a directory.
@@ -101,11 +138,84 @@ func (r *Registry) LoadFromDir(dir string) error {
 		if err != nil {
 			return err
 		}
-		var t AppTemplate
-		if err := yaml.Unmarshal(data, &t); err != nil {
-			return fmt.Errorf("parse template %s: %w", e.Name(), err)
+		if err := r.registerYAML(e.Name(), data); err != nil {
+			return err
 		}
-		r.templates[t.ID] = &t
+	}
+	return nil
+}
+
+type remoteCatalog struct {
+	Templates []remoteTemplate `json:"templates"`
+}
+
+type remoteTemplate struct {
+	ID      string `json:"id"`
+	URL     string `json:"url"`
+	Content string `json:"content"`
+}
+
+// LoadFromRemote loads YAML templates from a public catalog. Relative template
+// URLs are resolved against the catalog URL, which lets GitHub Pages host both
+// index.json and the template files without requiring a new Vessel release.
+func (r *Registry) LoadFromRemote(catalogURL string) error {
+	if catalogURL == "" {
+		catalogURL = DefaultRemoteCatalogURL
+	}
+	client := &http.Client{Timeout: 4 * time.Second}
+	resp, err := client.Get(catalogURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("catalog returned %s", resp.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return err
+	}
+	var catalog remoteCatalog
+	if err := json.Unmarshal(body, &catalog); err != nil {
+		return fmt.Errorf("parse remote catalog: %w", err)
+	}
+	base := resp.Request.URL
+	for _, item := range catalog.Templates {
+		if item.Content != "" {
+			name := item.ID
+			if name == "" {
+				name = "remote template"
+			}
+			if err := r.registerYAML(name, []byte(item.Content)); err != nil {
+				return err
+			}
+			continue
+		}
+		if item.URL == "" {
+			continue
+		}
+		u, err := base.Parse(item.URL)
+		if err != nil {
+			return fmt.Errorf("resolve template %s: %w", item.ID, err)
+		}
+		tResp, err := client.Get(u.String())
+		if err != nil {
+			return fmt.Errorf("fetch template %s: %w", item.ID, err)
+		}
+		data, readErr := io.ReadAll(io.LimitReader(tResp.Body, 2<<20))
+		closeErr := tResp.Body.Close()
+		if readErr != nil {
+			return readErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if tResp.StatusCode != http.StatusOK {
+			return fmt.Errorf("template %s returned %s", item.ID, tResp.Status)
+		}
+		if err := r.registerYAML(item.URL, data); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -127,5 +237,23 @@ func (r *Registry) List() []*AppTemplate {
 	for _, t := range r.templates {
 		out = append(out, t)
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Category == out[j].Category {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Category < out[j].Category
+	})
 	return out
+}
+
+func (r *Registry) registerYAML(name string, data []byte) error {
+	var t AppTemplate
+	if err := yaml.Unmarshal(data, &t); err != nil {
+		return fmt.Errorf("parse template %s: %w", name, err)
+	}
+	if t.ID == "" {
+		return fmt.Errorf("parse template %s: missing id", name)
+	}
+	r.templates[t.ID] = &t
+	return nil
 }
