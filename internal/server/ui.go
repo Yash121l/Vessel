@@ -201,6 +201,7 @@ let S={
   deployWizardName:'',
   deployWizardDomain:'',
   deployWizardSkip:[],
+  wizardSearchQuery:'',
 };
 function set(p){Object.assign(S,p);render()}
 async function api(method,path,body){
@@ -526,97 +527,372 @@ function wizardBack(){
   if(S.deployStep>1)set({deployStep:S.deployStep-1});
 }
 // ── Deploy wizard step 1: template selection grid ────────────────────────────
-function wizardStep1(){
-  const apps=S.apps;
-  if(!apps||!apps.length){
-    return'<div style="text-align:center;padding:48px 24px;color:var(--muted)">'+
-      '<div style="margin-bottom:12px;opacity:.4">'+ico('rocket',40)+'</div>'+
-      '<div style="font-size:14px">Loading templates…</div>'+
-    '</div>';
-  }
-  // Group apps by category for display
-  const categories=[...new Set(apps.map(a=>a.category||'Other'))].sort();
-  let html='<div>';
-  categories.forEach(cat=>{
-    const catApps=apps.filter(a=>(a.category||'Other')===cat);
-    html+='<div style="margin-bottom:28px">'+
-      '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">'+escHtml(cat)+'</div>'+
-      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">'+
-      catApps.map(a=>{
-        const desc=a.description||'';
-        return'<div class="card" style="cursor:pointer;transition:border-color .15s,box-shadow .15s;padding:18px 16px" '+
-          'onclick="wizardSelectApp(\''+escAttr(a.id)+'\')" '+
-          'onmouseenter="this.style.borderColor=\'var(--accent)\';this.style.boxShadow=\'0 0 0 1px var(--accent)\'" '+
-          'onmouseleave="this.style.borderColor=\'\';this.style.boxShadow=\'\'">'+
-          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'+
-            imgAvatar(a.image,36)+
-            '<div style="min-width:0">'+
-              '<div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(a.name||a.id)+'</div>'+
-              '<div style="font-size:11px;color:var(--accent2);margin-top:1px">'+escHtml(a.category||'')+'</div>'+
-            '</div>'+
-          '</div>'+
-          (desc?'<div style="font-size:12px;color:var(--muted2);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+escHtml(desc)+'</div>':'')+
-        '</div>';
-      }).join('')+
-      '</div></div>';
+function wizardTemplatesGrid(){
+  const apps = S.apps || [];
+  const q = (S.wizardSearchQuery || '').toLowerCase().trim();
+  const filtered = apps.filter(a => {
+    return (a.name || '').toLowerCase().includes(q) ||
+           (a.id || '').toLowerCase().includes(q) ||
+           (a.category || '').toLowerCase().includes(q) ||
+           (a.description || '').toLowerCase().includes(q);
   });
-  html+='</div>';
+
+  if (!filtered.length) {
+    return '<div style="grid-column: 1/-1; text-align:center; padding: 40px; color: var(--muted)">No matching templates found</div>';
+  }
+
+  // Group apps by category for display
+  const categories = [...new Set(filtered.map(a => a.category || 'Other'))].sort();
+  let html = '';
+  
+  categories.forEach(cat => {
+    const catApps = filtered.filter(a => (a.category || 'Other') === cat);
+    html += '<div style="grid-column: 1/-1; margin-top: 14px; margin-bottom: 8px">'+
+      '<div style="font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em">'+escHtml(cat)+'</div>'+
+    '</div>';
+    
+    catApps.forEach(a => {
+      const desc = a.description || '';
+      html += '<div class="card" style="cursor:pointer; transition:all .15s; padding:10px 12px; display:flex; align-items:center; gap:8px" '+
+        'title="'+escAttr(desc)+'" '+
+        'onclick="wizardSelectApp(\''+escAttr(a.id)+'\')" '+
+        'onmouseenter="this.style.borderColor=\'var(--accent)\';this.style.background=\'var(--surface2)\'" '+
+        'onmouseleave="this.style.borderColor=\'\';this.style.background=\'\'">'+
+        imgAvatar(a.image, 28)+
+        '<div style="min-width:0; flex:1">'+
+          '<div style="font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">'+escHtml(a.name || a.id)+'</div>'+
+          '<div style="font-size: 9px; color: var(--accent2); margin-top: 1px">'+escHtml(a.category || '')+'</div>'+
+        '</div>'+
+      '</div>';
+    });
+  });
+  
   return html;
 }
-// ── Deploy wizard step 2: env var form with DNS guidance ──────────────────────
-function wizardStep2(){
-  const app=S.deployWizardApp;
-  if(!app)return'';
-  const vars=app.env_vars||[];
-  const envRows=vars.map(ev=>{
-    const id='wenv_'+ev.key;
-    const type=ev.secret?'password':'text';
-    const val=escAttr(Object.prototype.hasOwnProperty.call(S.deployWizardEnv,ev.key)?S.deployWizardEnv[ev.key]:(ev.default||''));
-    return'<div class="fg" style="margin-bottom:12px">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
-        '<label style="margin-bottom:5px">'+escHtml(ev.key)+(ev.required?' <span style="color:var(--red)">*</span>':'')+'</label>'+
-        (ev.secret?'<button type="button" class="btn btn-xs" onclick="(function(){const el=document.getElementById(\''+id+'\');if(!el)return;const b=new Uint8Array(32);crypto.getRandomValues(b);el.value=Array.from(b).map(x=>x.toString(16).padStart(2,\'0\')).join(\'\');S.deployWizardEnv[\''+escAttr(ev.key)+'\']=el.value;})()">Generate</button>':'')+
-      '</div>'+
-      '<input id="'+id+'" type="'+type+'" value="'+val+'" placeholder="'+escAttr(ev.description||ev.key)+'" '+
-        (ev.required?'required':'')+' '+
-        'oninput="S.deployWizardEnv[\''+escAttr(ev.key)+'\']=this.value">'+
-      (ev.description?'<div style="font-size:11px;color:var(--muted);margin-top:4px">'+escHtml(ev.description)+'</div>':'')+
+
+function filterWizardTemplates(q) {
+  S.wizardSearchQuery = q;
+  const listEl = document.getElementById('wizard-templates-list');
+  if (listEl) {
+    listEl.innerHTML = wizardTemplatesGrid();
+  }
+}
+
+function wizardStep1(){
+  const apps = S.apps;
+  if(!apps || !apps.length){
+    return'<div style="text-align:center;padding:48px 24px;color:var(--muted)">'+
+      ico('loader', 16)+' Loading templates...'+
     '</div>';
-  }).join('');
-  return'<div style="max-width:680px">'+
-    '<div style="margin-bottom:20px">'+
-      '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Step 2 of 3</div>'+
-      '<div style="font-weight:700;font-size:16px">Configure '+escHtml(app.name||app.id)+'</div>'+
-    '</div>'+
-    '<div class="card" style="margin-bottom:16px">'+
-      '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">'+ico('settings',14,'var(--accent)')+'Deployment Settings</div>'+
-      '<div class="grid2">'+
-        '<div class="fg"><label>Deployment Name <span style="color:var(--red)">*</span></label>'+
-          '<input placeholder="my-app" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required '+
-            'value="'+escAttr(S.deployWizardName)+'" oninput="S.deployWizardName=this.value"></div>'+
-        '<div class="fg"><label>Custom Domain (optional)</label>'+
-          '<input placeholder="app.example.com" '+
-            'value="'+escAttr(S.deployWizardDomain)+'" '+
-            'onfocus="ensureSystemIP()" '+
-            'oninput="S.deployWizardDomain=this.value;(function(){const box=document.getElementById(\'wiz-dns-box\');if(box)box.innerHTML=dnsGuidanceBox(S.deployWizardDomain);})()">'+
-          '<div id="wiz-dns-box">'+dnsGuidanceBox(S.deployWizardDomain)+'</div>'+
-        '</div>'+
+  }
+
+  return '<div>'+
+    '<div style="margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:16px">'+
+      '<div>'+
+        '<div style="font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 4px">Step 1 of 3</div>'+
+        '<div style="font-weight: 700; font-size: 15px">Select a template to deploy</div>'+
+      '</div>'+
+      '<div style="position:relative; width:260px">'+
+        '<input id="wiz-search" placeholder="Search templates..." '+
+          'value="'+escHtml(S.wizardSearchQuery)+'" oninput="filterWizardTemplates(this.value)" autocomplete="off" '+
+          'style="padding-left:32px; padding-top:6px; padding-bottom:6px; font-size:12px">'+
+        '<div style="position:absolute; left:10px; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--muted)">'+ico('search',12)+'</div>'+
       '</div>'+
     '</div>'+
-    (vars.length?
-      '<div class="card" style="margin-bottom:16px">'+
-        '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">'+ico('file-code',14,'var(--accent)')+'Environment Variables</div>'+
-        envRows+
-      '</div>':'')+
-    '<div style="display:flex;gap:8px;justify-content:space-between">'+
-      '<button type="button" class="btn" onclick="wizardBack()" style="display:flex;align-items:center;gap:5px">← Back</button>'+
-      '<button type="button" class="btn-primary" onclick="wizardNext()" style="display:flex;align-items:center;gap:5px">'+
-        'Review '+ico('chevron-right',13)+'</button>'+
+    '<div id="wizard-templates-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(175px, 1fr)); gap:10px">'+
+      wizardTemplatesGrid()+
     '</div>'+
   '</div>';
 }
-// ── Auto-refresh ──────────────────────────────────────────────────────────────
-function toggleAutoRefresh(loadFn){
+
+// ── Deploy wizard step 2: env var form with DNS guidance ──────────────────────
+function toggleWizardService(name, skip) {
+  S.deployWizardSkip = S.deployWizardSkip || [];
+  if (skip) {
+    if (!S.deployWizardSkip.includes(name)) {
+      S.deployWizardSkip.push(name);
+    }
+  } else {
+    S.deployWizardSkip = S.deployWizardSkip.filter(x => x !== name);
+  }
+  // Re-render Step 2
+  const container = document.getElementById('wiz-step-container');
+  if (container) {
+    container.innerHTML = wizardStep2Content();
+  }
+}
+
+function wizardStep2Content() {
+  const app = S.deployWizardApp;
+  if (!app) return '';
+  const vars = app.env_vars || [];
+  const services = app.extra_services || [];
+  
+  const envRows = vars.map(ev => {
+    const id = 'wenv_' + ev.key;
+    const type = ev.secret ? 'password' : 'text';
+    const val = escAttr(Object.prototype.hasOwnProperty.call(S.deployWizardEnv, ev.key) ? S.deployWizardEnv[ev.key] : (ev.default || ''));
+    return '<div class="fg" style="margin-bottom:12px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+        '<label style="margin-bottom:5px">' + escHtml(ev.key) + (ev.required ? ' <span style="color:var(--red)">*</span>' : '') + '</label>' +
+        (ev.secret ? '<button type="button" class="btn btn-xs" onclick="(function(){const el=document.getElementById(\'' + id + '\');if(!el)return;const b=new Uint8Array(32);crypto.getRandomValues(b);el.value=Array.from(b).map(x=>x.toString(16).padStart(2,\'0\')).join(\'\');S.deployWizardEnv[\'' + escAttr(ev.key) + '\']=el.value;})()">Generate</button>' : '') +
+      '</div>' +
+      '<input id="' + id + '" type="' + type + '" value="' + val + '" placeholder="' + escAttr(ev.description || ev.key) + '" ' +
+        (ev.required ? 'required' : '') + ' ' +
+        'oninput="S.deployWizardEnv[\'' + escAttr(ev.key) + '\']=this.value">' +
+      (ev.description ? '<div style="font-size:11px;color:var(--muted);margin-top:4px">' + escHtml(ev.description) + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  let sidecarsHtml = '';
+  if (services.length > 0) {
+    sidecarsHtml = '<div class="card" style="margin-bottom:16px">' +
+      '<div style="font-weight:600;font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:8px">' + ico('layers', 14, 'var(--accent)') + 'Compose Plan & Sidecars</div>' +
+      '<div style="font-size:12px;color:var(--muted2);margin-bottom:12px">Optional sidecars can be skipped if you wish to provide your own external instance.</div>' +
+      services.map(s => {
+        const optional = !!s.optional;
+        const isSkipped = S.deployWizardSkip.includes(s.name);
+        return '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--border)">' +
+          '<input type="checkbox" ' + (isSkipped ? 'checked' : '') + ' ' + (!optional ? 'disabled' : '') + ' ' +
+            'onchange="toggleWizardService(\'' + escAttr(s.name) + '\',this.checked)" style="width:auto;margin-top:3px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+              '<span style="font-weight:600;font-size:12px">' + escHtml(s.name) + '</span>' +
+              '<span style="font-size:10px;color:var(--muted);font-family:var(--mono)">' + escHtml(s.image) + '</span>' +
+              (s.role ? '<span class="tag" style="background:var(--surface3);color:var(--muted2)">' + escHtml(s.role) + '</span>' : '') +
+              (optional ? '<span class="tag" style="background:var(--green-dim);color:var(--green)">optional</span>' : '') +
+            '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:3px">' +
+              (optional ? (isSkipped ? 'Skipped. Fill the environment variables below to connect your external instance.' : 'Uncheck to skip the Vessel-managed service and use your own.') : 'Required sidecar service.') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  return '<div style="max-width:680px">' +
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Step 2 of 3</div>' +
+      '<div style="font-weight:700;font-size:16px">Configure ' + escHtml(app.name || app.id) + '</div>' +
+    '</div>' +
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">' + ico('settings', 14, 'var(--accent)') + 'Deployment Settings</div>' +
+      '<div class="grid2">' +
+        '<div class="fg"><label>Deployment Name <span style="color:var(--red)">*</span></label>' +
+          '<input placeholder="my-app" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required ' +
+            'value="' + escAttr(S.deployWizardName) + '" oninput="S.deployWizardName=this.value"></div>' +
+        '<div class="fg"><label>Custom Domain (optional)</label>' +
+          '<input placeholder="app.example.com" ' +
+            'value="' + escAttr(S.deployWizardDomain) + '" ' +
+            'onfocus="ensureSystemIP()" ' +
+            'oninput="S.deployWizardDomain=this.value;(function(){const box=document.getElementById(\'wiz-dns-box\');if(box)box.innerHTML=dnsGuidanceBox(S.deployWizardDomain);})()">' +
+          '<div id="wiz-dns-box">' + dnsGuidanceBox(S.deployWizardDomain) + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    sidecarsHtml +
+    (vars.length ?
+      '<div class="card" style="margin-bottom:16px">' +
+        '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">' + ico('file-code', 14, 'var(--accent)') + 'Environment Variables</div>' +
+        envRows +
+      '</div>' : '') +
+    '<div style="display:flex;gap:8px;justify-content:space-between">' +
+      '<button type="button" class="btn" onclick="wizardBack()" style="display:flex;align-items:center;gap:5px">← Back</button>' +
+      '<button type="button" class="btn-primary" onclick="wizardNext()" style="display:flex;align-items:center;gap:5px">' +
+        'Review ' + ico('chevron-right', 13) + '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function wizardStep2(){
+  return '<div id="wiz-step-container">' + wizardStep2Content() + '</div>';
+}
+
+// ── Deploy wizard step 3: review & graphical topology ─────────────────────────
+function topologyDiagram(app){
+  if(!app)return'';
+  const skip=S.deployWizardSkip||[];
+  const services=app.extra_services||[];
+  const activeSidecars=services.filter(s=>!skip.includes(s.name));
+  const hasSidecars=services.length>0;
+
+  const cloudPath = "M 45 95 c -4 -7 -13 -7 -17 0 c -8 -4 -17 2 -15 10 c -5 3 -4 12 2 13 h 30 c 6 -1 7 -10 2 -13 c 1 -4 -4 -9 -12 -10 z";
+
+  let svg = '<svg width="100%" height="200" viewBox="0 0 600 200" style="background:var(--surface2);border-radius:var(--r);border:1px solid var(--border)">'+
+    '<defs>'+
+      '<marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">'+
+        '<path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--muted)" />'+
+      '</marker>'+
+      '<marker id="arrow-accent" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">'+
+        '<path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--accent)" />'+
+      '</marker>'+
+      '<linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">'+
+        '<stop offset="0%" stop-color="var(--accent)" />'+
+        '<stop offset="100%" stop-color="var(--accent2)" />'+
+      '</linearGradient>'+
+    '</defs>';
+
+  svg += '<g class="pulse" style="animation-duration: 3s">'+
+    '<path d="'+cloudPath+'" fill="none" stroke="var(--accent)" stroke-width="2" transform="scale(1.5) translate(-2, 10)" />'+
+    '<text x="50" y="152" fill="var(--accent)" font-size="10" font-weight="600" text-anchor="middle">CLIENT</text>'+
+  '</g>';
+
+  svg += '<path d="M 85 100 L 172 100" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#arrow-accent)" stroke-dasharray="4,4" />';
+
+  svg += '<g>'+
+    '<rect x="180" y="50" width="160" height="100" rx="8" fill="url(#primaryGrad)" stroke="var(--accent2)" stroke-width="1" />'+
+    '<text x="260" y="85" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">'+escHtml((app.name||app.id).toUpperCase())+'</text>'+
+    '<text x="260" y="105" fill="#ffffffb0" font-size="9" font-family="var(--mono)" text-anchor="middle">PRIMARY</text>'+
+    '<text x="260" y="128" fill="#ffffff90" font-size="9" font-family="var(--mono)" text-anchor="middle">Port '+(app.proxy_port || 80)+'</text>'+
+  '</g>';
+
+  if (!hasSidecars) {
+    svg += '<text x="470" y="105" fill="var(--muted)" font-size="11" text-anchor="middle">No sidecars required</text>';
+  } else {
+    services.forEach((s, idx) => {
+      const isSkipped = skip.includes(s.name);
+      const boxCount = services.length;
+      let boxY = 50;
+      let arrowD = "";
+
+      if (boxCount === 1) {
+        boxY = 50;
+        arrowD = "M 340 100 L 422 100";
+      } else if (boxCount === 2) {
+        boxY = idx === 0 ? 15 : 110;
+        arrowD = idx === 0 ? "M 340 85 L 422 55" : "M 340 115 L 422 145";
+      } else {
+        const gap = 170 / boxCount;
+        boxY = 15 + idx * gap;
+        arrowD = "M 340 100 L 422 " + (boxY + 25);
+      }
+
+      const boxX = 430;
+      const boxW = 140;
+      const boxH = boxCount > 2 ? (150 / boxCount) : 75;
+
+      const fill = isSkipped ? 'var(--surface)' : 'var(--surface2)';
+      const stroke = isSkipped ? 'var(--border)' : 'var(--border2)';
+      const opacity = isSkipped ? '0.4' : '1.0';
+      const dash = isSkipped ? 'stroke-dasharray="3,3"' : '';
+
+      svg += '<g opacity="'+opacity+'">'+
+        '<rect x="'+boxX+'" y="'+boxY+'" width="'+boxW+'" height="'+boxH+'" rx="6" fill="'+fill+'" stroke="'+stroke+'" stroke-width="1.5" '+dash+' />'+
+        '<text x="'+(boxX + 70)+'" y="'+(boxY + (boxH/2) - 4)+'" fill="var(--text)" font-size="11" font-weight="600" text-anchor="middle">'+escHtml(s.name)+'</text>'+
+        '<text x="'+(boxX + 70)+'" y="'+(boxY + (boxH/2) + 10)+'" fill="var(--accent2)" font-size="9" font-family="var(--mono)" text-anchor="middle">'+escHtml(s.role || "sidecar")+(isSkipped ? " (skipped)" : "")+'</text>'+
+      '</g>';
+
+      const arrowStroke = isSkipped ? 'var(--border)' : 'var(--muted)';
+      const arrowDash = isSkipped ? 'stroke-dasharray="3,3"' : '';
+      svg += '<path d="'+arrowD+'" stroke="'+arrowStroke+'" stroke-width="1.5" fill="none" marker-end="url(#arrow)" '+arrowDash+' />';
+    });
+  }
+
+  svg += '</svg>';
+  return svg;
+}
+
+function wizardStep3(){
+  const app = S.deployWizardApp;
+  if (!app) return '';
+  const name = S.deployWizardName || '';
+  const domain = S.deployWizardDomain || '';
+  const env = S.deployWizardEnv || {};
+  const skip = S.deployWizardSkip || [];
+
+  const services = app.extra_services || [];
+  const activeServices = services.filter(s => !skip.includes(s.name));
+
+  const envKeys = Object.keys(env);
+  const envPreview = envKeys.map(k => {
+    const ev = app.env_vars && app.env_vars.find(x => x.key === k);
+    const isSecret = ev && ev.secret;
+    const displayVal = isSecret ? '••••••••••••••••' : escHtml(env[k] || '');
+    return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0">' +
+      '<code style="font-family:var(--mono);color:var(--muted)">' + escHtml(k) + '</code>' +
+      '<span style="color:var(--muted)">=</span>' +
+      '<span style="font-family:var(--mono)">' + displayVal + '</span>' +
+    '</div>';
+  }).join('');
+
+  return '<div style="max-width:800px">' +
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Step 3 of 3</div>' +
+      '<div style="font-weight:700;font-size:16px">Review & Deploy ' + escHtml(app.name || app.id) + '</div>' +
+    '</div>' +
+    '<div class="card" style="margin-bottom:16px;padding:16px 20px">' +
+      '<div style="font-weight:600;font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:8px">' + ico('layers', 14, 'var(--accent)') + 'Topology & Service Map</div>' +
+      topologyDiagram(app) +
+    '</div>' +
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">' + ico('check-circle', 14, 'var(--accent)') + 'Deployment Details</div>' +
+      '<table class="tbl" style="margin-bottom:12px">' +
+        '<tbody>' +
+          '<tr><td style="width:160px;font-weight:600">Application</td><td><div style="display:flex;align-items:center;gap:8px">' + imgAvatar(app.image, 24) + ' ' + escHtml(app.name || app.id) + '</div></td></tr>' +
+          '<tr><td style="font-weight:600">Deployment Name</td><td style="font-family:var(--mono)">' + escHtml(name) + '</td></tr>' +
+          (domain ? '<tr><td style="font-weight:600">Custom Domain</td><td><a href="https://' + domain + '" target="_blank" style="color:var(--accent2)">' + escHtml(domain) + '</a></td></tr>' : '') +
+          '<tr><td style="font-weight:600">Services Stack</td><td>' +
+            '<span style="font-weight:500">' + escHtml(app.name || app.id) + '</span>' +
+            (activeServices.length ? ' + ' + activeServices.map(s => '<span style="color:var(--accent2);font-weight:500">' + escHtml(s.name) + '</span>').join(' + ') : '') +
+            (skip.length ? ' <span style="color:var(--muted);font-size:11px">(' + skip.length + ' service' + (skip.length > 1 ? 's' : '') + ' skipped)</span>' : '') +
+          '</td></tr>' +
+        '</tbody>' +
+      '</table>' +
+      (envKeys.length ?
+        '<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:12px">' +
+          '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Environment Variables</div>' +
+          '<div style="background:var(--surface2);border-radius:var(--r);padding:10px 14px">' + envPreview + '</div>' +
+        '</div>' : '') +
+    '</div>' +
+    '<div style="display:flex;gap:8px;justify-content:space-between">' +
+      '<button type="button" class="btn" onclick="wizardBack()" style="display:flex;align-items:center;gap:5px">← Back</button>' +
+      '<button type="button" class="btn-primary" onclick="wizardSubmit()" style="display:flex;align-items:center;gap:6px" ' + (S.deploying ? 'disabled' : '') + '>' +
+        (S.deploying ? ico('loader', 13) + ' Deploying...' : ico('rocket', 13) + ' Deploy Stack') + '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function deployWizard(){
+  if (S.deployStep === 1) return wizardStep1();
+  if (S.deployStep === 2) return wizardStep2();
+  if (S.deployStep === 3) return wizardStep3();
+  return '';
+}
+
+async function wizardSubmit(){
+  const app = S.deployWizardApp;
+  if (!app) return;
+  const name = S.deployWizardName.trim();
+  if (!name) { set({error: 'Deployment name is required'}); return; }
+  const domain = S.deployWizardDomain.trim();
+  const env = S.deployWizardEnv;
+  const skip = S.deployWizardSkip;
+
+  set({deploying: true, error: null});
+  try {
+    await api('POST', '/deployments', {
+      app_id: app.id,
+      name,
+      domain,
+      env,
+      skip_services: skip
+    });
+    await load();
+    set({
+      page: 'containers',
+      deploying: false,
+      deployStep: 1,
+      deployWizardApp: null,
+      deployWizardEnv: {},
+      deployWizardName: '',
+      deployWizardDomain: '',
+      deployWizardSkip: []
+    });
+  } catch (e) {
+    set({deploying: false, error: e.message});
+  }
+}function toggleAutoRefresh(loadFn){
   const next=!S.autoRefreshEnabled;
   if(next){
     const timer=setInterval(loadFn,5000);
@@ -945,7 +1221,7 @@ function pageDeploy(){
       '<h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Deploy</h1>'+
       '<p style="color:var(--muted);font-size:13px;margin-top:4px">Deploy from curated templates, any Docker Hub image, or define a multi-container compose stack</p>'+
     '</div>'+tabs+
-    (S.deployTab==='templates'?deployTemplates():S.deployTab==='custom'?deployCustomForm():deployComposeForm())+
+    (S.deployTab==='templates'?deployWizard():S.deployTab==='custom'?deployCustomForm():deployComposeForm())+
   '</div>';
 }
 function deployTemplates(){
