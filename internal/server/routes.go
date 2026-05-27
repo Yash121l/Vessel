@@ -785,9 +785,10 @@ func removeComposeStack() gin.HandlerFunc {
 	}
 }
 
-// selfUpdate streams the output of `vessel update` as SSE so the UI can show
-// live progress. The process runs as a child of the server; systemctl restart
-// will kill the server and bring it back up with the new binary.
+// selfUpdate streams the self-update progress as SSE.
+// Strategy: run `vessel update --no-restart` to download and replace the binary,
+// stream all output, send __DONE__, flush, then restart the service in a
+// goroutine with a short delay so the response has time to reach the client.
 func selfUpdate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Content-Type", "text/event-stream")
@@ -803,13 +804,15 @@ func selfUpdate() gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, exe, "update")
+		// --no-restart: download and replace binary only; we handle the restart
+		// ourselves after flushing __DONE__ to the client.
+		cmd := exec.CommandContext(ctx, exe, "update", "--no-restart")
 		stdout, _ := cmd.StdoutPipe()
 		stderr, _ := cmd.StderrPipe()
 
 		if err := cmd.Start(); err != nil {
 			c.Stream(func(w io.Writer) bool {
-				fmt.Fprintf(w, "data: error: %s\n\n", err.Error())
+				fmt.Fprintf(w, "data: ERROR: %s\n\n", err.Error())
 				return false
 			})
 			return
@@ -828,6 +831,7 @@ func selfUpdate() gin.HandlerFunc {
 		done := make(chan error, 1)
 		go func() { done <- cmd.Wait(); close(lines) }()
 
+		var updateErr error
 		c.Stream(func(w io.Writer) bool {
 			select {
 			case line, ok := <-lines:
@@ -837,9 +841,11 @@ func selfUpdate() gin.HandlerFunc {
 				fmt.Fprintf(w, "data: %s\n\n", line)
 				return true
 			case err := <-done:
+				updateErr = err
 				if err != nil {
 					fmt.Fprintf(w, "data: ERROR: %s\n\n", err.Error())
 				} else {
+					fmt.Fprintf(w, "data: Restarting service…\n\n")
 					fmt.Fprintf(w, "data: __DONE__\n\n")
 				}
 				return false
@@ -847,6 +853,15 @@ func selfUpdate() gin.HandlerFunc {
 				return false
 			}
 		})
+
+		// Restart the service after a short delay so the SSE response has time
+		// to be flushed and received by the client before the server dies.
+		if updateErr == nil {
+			go func() {
+				time.Sleep(500 * time.Millisecond)
+				_ = exec.Command("systemctl", "restart", "vessel").Run()
+			}()
+		}
 	}
 }
 // The caller provides a primary service plus zero or more sidecar services,

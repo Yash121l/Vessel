@@ -21,10 +21,16 @@ const (
 	vesselSvc   = "vessel"
 )
 
+var noRestart bool
+
 var updateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update Vessel to the latest release from GitHub",
 	RunE:  runUpdate,
+}
+
+func init() {
+	updateCmd.Flags().BoolVar(&noRestart, "no-restart", false, "Download and replace binary only; skip service restart")
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
@@ -52,6 +58,13 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Binary updated to %s\n", latestVer)
+
+	// Restart the systemd service unless --no-restart was passed
+	// (the server's selfUpdate handler handles restart itself after flushing SSE).
+	if noRestart {
+		fmt.Println("Skipping service restart (--no-restart).")
+		return nil
+	}
 
 	// Restart the systemd service if running under systemd
 	if isSystemdManaged() {
