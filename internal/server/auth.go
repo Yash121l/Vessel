@@ -141,9 +141,9 @@ func logout(db *store.DB) gin.HandlerFunc {
 	}
 }
 
-func me() gin.HandlerFunc {
+func me(version string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"user": currentUser(c)})
+		c.JSON(http.StatusOK, gin.H{"user": currentUser(c), "version": version})
 	}
 }
 

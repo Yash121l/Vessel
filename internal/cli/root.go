@@ -24,7 +24,7 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
 		}
-		return server.Start(cfg)
+		return server.Start(cfg, Version)
 	},
 }
 

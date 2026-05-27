@@ -18,7 +18,7 @@ import (
 )
 
 // Start initializes and runs the Vessel HTTP server.
-func Start(cfg *config.Config) error {
+func Start(cfg *config.Config, version string) error {
 	// Open database
 	db, err := store.Open(cfg.DBPath)
 	if err != nil {
@@ -58,7 +58,7 @@ func Start(cfg *config.Config) error {
 
 	// Register routes
 	api := r.Group("/api/v1")
-	registerRoutes(api, db, reg, engine)
+	registerRoutes(api, db, reg, engine, version)
 
 	// Serve embedded UI
 	r.NoRoute(serveUI())

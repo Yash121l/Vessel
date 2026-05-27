@@ -181,6 +181,7 @@ let S={
   hubQuery:'',hubResults:[],hubSearching:false,hubSelected:null,
   customPorts:[{internal:'',external:'',protocol:'tcp'}],
   customVolumes:[{name:'',mount:''}],
+  serverVersion:'',
   // Compose stack builder state
   csName:'',csDomain:'',csPrimaryImage:'',csPrimaryName:'',
   csPrimaryPorts:[{internal:'',external:'',protocol:'tcp'}],
@@ -206,7 +207,7 @@ async function boot(){
     const meRes=await fetch(API+'/me',{credentials:'same-origin'});
     if(!meRes.ok){set({authReady:true,configured:true,authenticated:false,authMode:'login'});return}
     const meData=await meRes.json();
-    S.configured=true;S.authReady=true;S.authenticated=true;S.currentUser=meData.user;render();
+    S.configured=true;S.authReady=true;S.authenticated=true;S.currentUser=meData.user;S.serverVersion=meData.version||'';render();
     await load();
   }catch(e){set({authReady:true,configured:true,authenticated:false,authMode:'login',error:e.message})}
 }
@@ -446,7 +447,7 @@ function render(){
       '<div style="display:flex;align-items:center;gap:10px">'+
         '<div style="width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ico('anchor',16,'#fff')+'</div>'+
         '<div><div style="font-weight:700;font-size:14px;letter-spacing:-.3px">Vessel</div>'+
-        '<div style="font-size:10px;color:var(--muted)">v0.1.0</div></div>'+
+        '<div style="font-size:10px;color:var(--muted)">'+(S.serverVersion?'v'+S.serverVersion:'')+'</div></div>'+
       '</div>'+
     '</div>'+
     '<div style="padding:8px;flex:1">'+
@@ -1236,7 +1237,7 @@ function pageSettings(){
     '<div class="card" style="max-width:680px;margin-bottom:24px">'+
       row('Signed in as',escHtml((S.currentUser&&S.currentUser.username)||''))+
       row('Role',escHtml((S.currentUser&&S.currentUser.role)||''))+
-      row('Version','0.1.0')+row('Data directory','/var/lib/vessel')+
+      row('Version',escHtml(S.serverVersion||'—'))+row('Data directory','/var/lib/vessel')+
       row('Config file','/etc/vessel/config.yaml')+row('UI port','4800')+
       '<div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);display:flex;gap:10px">'+
         '<a href="https://github.com/Yash121l/Vessel" target="_blank" class="btn btn-sm" style="display:flex;align-items:center;gap:6px">'+ico('github',13)+' View on GitHub</a>'+

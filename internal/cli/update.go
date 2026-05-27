@@ -123,8 +123,9 @@ func platformAssetName() string {
 	}
 }
 
-// downloadAndReplace downloads the binary at url, writes it next to the
-// current binary as a temp file, then atomically replaces the current binary.
+// downloadAndReplace downloads the binary at url, writes it to a temp file,
+// then replaces the destination binary. The temp file is written to os.TempDir()
+// to avoid permission issues with /usr/local/bin, then copied into place.
 func downloadAndReplace(url, dest string) error {
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Get(url)
@@ -137,16 +138,16 @@ func downloadAndReplace(url, dest string) error {
 		return fmt.Errorf("download returned HTTP %d", resp.StatusCode)
 	}
 
-	// Write to a temp file in the same directory so rename is atomic
-	dir := filepath.Dir(dest)
-	tmp, err := os.CreateTemp(dir, ".vessel-update-*")
+	// Write to a temp file in os.TempDir() — always writable, avoids
+	// permission errors when dest is in /usr/local/bin.
+	tmp, err := os.CreateTemp("", ".vessel-update-*")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
 	tmpName := tmp.Name()
 	defer func() {
 		tmp.Close()
-		os.Remove(tmpName) // clean up on failure; no-op if rename succeeded
+		os.Remove(tmpName) // clean up on failure; no-op if copy succeeded
 	}()
 
 	if _, err := io.Copy(tmp, resp.Body); err != nil {
@@ -157,11 +158,49 @@ func downloadAndReplace(url, dest string) error {
 	}
 	tmp.Close()
 
-	// Atomic replace
-	if err := os.Rename(tmpName, dest); err != nil {
+	// Copy temp file over the destination (works across filesystems/devices).
+	if err := copyFile(tmpName, dest); err != nil {
 		return fmt.Errorf("replace binary: %w", err)
 	}
 	return nil
+}
+
+// copyFile copies src to dst, preserving permissions.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	// Write to a temp file next to dst so the final rename is atomic on the
+	// same filesystem. If that also fails due to permissions, write directly.
+	dir := filepath.Dir(dst)
+	out, err := os.CreateTemp(dir, ".vessel-replace-*")
+	if err != nil {
+		// Fallback: overwrite directly (non-atomic but still works)
+		out, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+		_, err = io.Copy(out, in)
+		return err
+	}
+	tmpName := out.Name()
+	defer func() {
+		out.Close()
+		os.Remove(tmpName)
+	}()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	if err := out.Chmod(0755); err != nil {
+		return err
+	}
+	out.Close()
+	return os.Rename(tmpName, dst)
 }
 
 // isSystemdManaged returns true when the vessel service unit exists.

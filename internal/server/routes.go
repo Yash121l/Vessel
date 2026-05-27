@@ -27,18 +27,19 @@ func registerRoutes(
 	db *store.DB,
 	reg *registry.Registry,
 	engine *deployment.Engine,
+	version string,
 ) {
 	// Public setup/auth endpoints
 	r.GET("/setup", setupStatus(db))
 	r.POST("/setup", setupAdmin(db))
 	r.POST("/login", login(db))
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok", "version": "0.1.0"})
+		c.JSON(200, gin.H{"status": "ok", "version": version})
 	})
 
 	r.Use(authRequired(db))
 	r.Use(requirePermission())
-	r.GET("/me", me())
+	r.GET("/me", me(version))
 	r.POST("/logout", logout(db))
 
 	// Vessel app users (login accounts)
