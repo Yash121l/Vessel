@@ -29,6 +29,30 @@ import (
 	"github.com/google/uuid"
 )
 
+var (
+	dnsLookupIP         = net.LookupIP
+	primaryIPv4Detector = detectAdvertisedIPv4
+	primaryIPv4Once     sync.Once
+	primaryIPv4Value    string
+	metadataHTTPClient  = &http.Client{Timeout: 250 * time.Millisecond}
+	nonPublicIPv4Nets   = mustParseCIDRs(
+		"0.0.0.0/8",
+		"10.0.0.0/8",
+		"100.64.0.0/10",
+		"127.0.0.0/8",
+		"169.254.0.0/16",
+		"172.16.0.0/12",
+		"192.0.0.0/24",
+		"192.0.2.0/24",
+		"192.168.0.0/16",
+		"198.18.0.0/15",
+		"198.51.100.0/24",
+		"203.0.113.0/24",
+		"224.0.0.0/4",
+		"240.0.0.0/4",
+	)
+)
+
 func registerRoutes(
 	r *gin.RouterGroup,
 	db *store.DB,
@@ -338,26 +362,12 @@ func systemDNS() gin.HandlerFunc {
 			c.JSON(400, resp)
 			return
 		}
-		ips, err := net.LookupIP(domain)
-		if err != nil {
-			resp.Error = "DNS record not found yet"
-			c.JSON(200, resp)
-			return
-		}
-		seen := map[string]bool{}
-		for _, ip := range ips {
-			if v4 := ip.To4(); v4 != nil {
-				s := v4.String()
-				if !seen[s] {
-					resp.IPs = append(resp.IPs, s)
-					seen[s] = true
-				}
-			}
-		}
-		resp.Resolved = len(resp.IPs) > 0
-		if resp.ExpectedIP != "" {
-			resp.MatchesExpected = seen[resp.ExpectedIP]
-		}
+		status := domainDNSStatus(domain)
+		resp.IPs = status.IPs
+		resp.ExpectedIP = status.ExpectedIP
+		resp.Resolved = status.Resolved
+		resp.MatchesExpected = status.MatchesExpected
+		resp.Error = status.Error
 		c.JSON(200, resp)
 	}
 }
@@ -367,16 +377,14 @@ func validateDomainDNSReady(domain string) error {
 	if domain == "" {
 		return nil
 	}
-	ips, err := net.LookupIP(domain)
-	if err != nil {
-		return fmt.Errorf("custom domain DNS is not ready yet: add an A record for %s and wait for propagation", domain)
+	status := domainDNSStatus(domain)
+	if status.Resolved {
+		return nil
 	}
-	for _, ip := range ips {
-		if ip.To4() != nil {
-			return nil
-		}
+	if status.Error != "" {
+		return fmt.Errorf("custom domain DNS is not ready yet: %s", status.Error)
 	}
-	return fmt.Errorf("custom domain DNS is not ready yet: %s has no A record", domain)
+	return fmt.Errorf("custom domain DNS is not ready yet: add an A record for %s and wait for propagation", domain)
 }
 
 type createDeploymentRequest struct {
@@ -1705,9 +1713,84 @@ func systemIP() gin.HandlerFunc {
 	}
 }
 
-// getPrimaryIPv4 returns the first non-loopback IPv4 address found on an
-// active network interface, or an empty string if none can be determined.
+type dnsStatus struct {
+	IPs             []string
+	ExpectedIP      string
+	Resolved        bool
+	MatchesExpected bool
+	Error           string
+}
+
+func domainDNSStatus(domain string) dnsStatus {
+	status := dnsStatus{
+		IPs:        []string{},
+		ExpectedIP: getPrimaryIPv4(),
+	}
+	ips, err := dnsLookupIP(domain)
+	if err != nil {
+		status.Error = "DNS record not found yet"
+		return status
+	}
+	seen := map[string]bool{}
+	for _, ip := range ips {
+		if v4 := ip.To4(); v4 != nil {
+			s := v4.String()
+			if !seen[s] {
+				status.IPs = append(status.IPs, s)
+				seen[s] = true
+			}
+		}
+	}
+	if len(status.IPs) == 0 {
+		status.Error = fmt.Sprintf("%s has no A record yet", domain)
+		return status
+	}
+	if status.ExpectedIP == "" {
+		status.Error = "unable to determine the server public IPv4 address automatically; set VESSEL_PUBLIC_IP on the server and try again"
+		return status
+	}
+	status.MatchesExpected = seen[status.ExpectedIP]
+	if !status.MatchesExpected {
+		status.Error = fmt.Sprintf("DNS resolves to %s, expected %s", strings.Join(status.IPs, ", "), status.ExpectedIP)
+		return status
+	}
+	status.Resolved = true
+	return status
+}
+
+// getPrimaryIPv4 returns the public IPv4 address that Vessel should advertise
+// for custom-domain DNS configuration, or an empty string if it cannot be
+// determined.
 func getPrimaryIPv4() string {
+	primaryIPv4Once.Do(func() {
+		primaryIPv4Value = primaryIPv4Detector()
+	})
+	return primaryIPv4Value
+}
+
+func detectAdvertisedIPv4() string {
+	if ip := normalizeIPv4(os.Getenv("VESSEL_PUBLIC_IP")); ip != "" {
+		return ip
+	}
+	if ip := firstPublicInterfaceIPv4(); ip != "" {
+		return ip
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	for _, detector := range []func(context.Context) string{
+		detectAWSPublicIPv4,
+		detectGCPPublicIPv4,
+		detectAzurePublicIPv4,
+		detectDigitalOceanPublicIPv4,
+	} {
+		if ip := detector(ctx); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func firstPublicInterfaceIPv4() string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return ""
@@ -1732,9 +1815,108 @@ func getPrimaryIPv4() string {
 				continue
 			}
 			if ip4 := ip.To4(); ip4 != nil {
+				if !isPublicIPv4(ip4) {
+					continue
+				}
 				return ip4.String()
 			}
 		}
 	}
 	return ""
+}
+
+func isPublicIPv4(ip net.IP) bool {
+	ip = ip.To4()
+	if ip == nil || !ip.IsGlobalUnicast() {
+		return false
+	}
+	for _, block := range nonPublicIPv4Nets {
+		if block.Contains(ip) {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeIPv4(raw string) string {
+	ip := net.ParseIP(strings.TrimSpace(raw))
+	if ip == nil {
+		return ""
+	}
+	if ip4 := ip.To4(); ip4 != nil && !ip4.IsLoopback() {
+		return ip4.String()
+	}
+	return ""
+}
+
+func mustParseCIDRs(cidrs ...string) []*net.IPNet {
+	out := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			panic(err)
+		}
+		out = append(out, network)
+	}
+	return out
+}
+
+func metadataText(ctx context.Context, method, endpoint string, headers map[string]string) string {
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
+	if err != nil {
+		return ""
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := metadataHTTPClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 128))
+	if err != nil {
+		return ""
+	}
+	return normalizeIPv4(string(body))
+}
+
+func detectAWSPublicIPv4(ctx context.Context) string {
+	const tokenURL = "http://169.254.169.254/latest/api/token"
+	const metadataURL = "http://169.254.169.254/latest/meta-data/public-ipv4"
+	tokenReq, err := http.NewRequestWithContext(ctx, http.MethodPut, tokenURL, nil)
+	if err == nil {
+		tokenReq.Header.Set("X-aws-ec2-metadata-token-ttl-seconds", "60")
+		if resp, err := metadataHTTPClient.Do(tokenReq); err == nil {
+			tokenBody, _ := io.ReadAll(io.LimitReader(resp.Body, 128))
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				if ip := metadataText(ctx, http.MethodGet, metadataURL, map[string]string{
+					"X-aws-ec2-metadata-token": strings.TrimSpace(string(tokenBody)),
+				}); ip != "" {
+					return ip
+				}
+			}
+		}
+	}
+	return metadataText(ctx, http.MethodGet, metadataURL, nil)
+}
+
+func detectGCPPublicIPv4(ctx context.Context) string {
+	return metadataText(ctx, http.MethodGet, "http://169.254.169.254/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip", map[string]string{
+		"Metadata-Flavor": "Google",
+	})
+}
+
+func detectAzurePublicIPv4(ctx context.Context) string {
+	return metadataText(ctx, http.MethodGet, "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&format=text", map[string]string{
+		"Metadata": "true",
+	})
+}
+
+func detectDigitalOceanPublicIPv4(ctx context.Context) string {
+	return metadataText(ctx, http.MethodGet, "http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address", nil)
 }
