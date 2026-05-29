@@ -23,6 +23,7 @@ type Config struct {
 	// Derived paths (not in YAML)
 	DeploymentsDir string `yaml:"-"`
 	TemplatesDir   string `yaml:"-"`
+	BackupsDir     string `yaml:"-"`
 	CaddyDir       string `yaml:"-"`
 	DBPath         string `yaml:"-"`
 }
@@ -77,6 +78,7 @@ func Load() (*Config, error) {
 func (c *Config) derivePaths() {
 	c.DeploymentsDir = filepath.Join(c.DataDir, "deployments")
 	c.TemplatesDir = filepath.Join(c.DataDir, "templates")
+	c.BackupsDir = filepath.Join(c.DataDir, "backups")
 	c.CaddyDir = filepath.Join(c.DataDir, "caddy")
 	c.DBPath = filepath.Join(c.DataDir, "vessel.db")
 }

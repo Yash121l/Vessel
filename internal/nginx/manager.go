@@ -21,9 +21,17 @@ var configRoots = []string{
 	"/opt/nginx/conf",
 }
 
+var runCommand = func(name string, args ...string) error {
+	return exec.Command(name, args...).Run()
+}
+
 // Manager provides nginx management operations.
 type Manager struct {
 	configRoot string
+}
+
+func (m *Manager) ConfigRoot() string {
+	return m.configRoot
 }
 
 // NewManager detects the nginx config root and returns a Manager.
@@ -180,12 +188,14 @@ func (m *Manager) SaveSite(name, content string) error {
 			return os.WriteFile(s.Path, []byte(content), 0644)
 		}
 	}
-	// Default: write to sites-available
-	available := filepath.Join(m.configRoot, "sites-available")
-	if err := os.MkdirAll(available, 0755); err != nil {
+	path, err := m.preferredNewSitePath(name)
+	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(available, name), []byte(content), 0644)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(content), 0644)
 }
 
 // CreateSite creates a new site config from a template.
@@ -258,6 +268,19 @@ func (m *Manager) ObtainCertificate(domain string) error {
 // For sites-available files: creates a symlink in sites-enabled.
 // For conf.d files: renames .disabled → .conf.
 func (m *Manager) EnableSite(name string) error {
+	if !m.useSitesAvailableLayout() {
+		confName := normalizeConfName(name)
+		confDPath := filepath.Join(m.configRoot, "conf.d", confName)
+		if _, err := os.Stat(confDPath); err == nil {
+			return nil
+		}
+		disabledPath := filepath.Join(m.configRoot, "conf.d", strings.TrimSuffix(confName, ".conf")+".disabled")
+		if _, err := os.Stat(disabledPath); err == nil {
+			return os.Rename(disabledPath, confDPath)
+		}
+		return fmt.Errorf("site not found: %s", name)
+	}
+
 	// Check if it's a conf.d file
 	confDPath := filepath.Join(m.configRoot, "conf.d", name)
 	if _, err := os.Stat(confDPath); err == nil {
@@ -287,6 +310,16 @@ func (m *Manager) EnableSite(name string) error {
 // For sites-available files: removes the symlink from sites-enabled.
 // For conf.d files: renames .conf → .disabled.
 func (m *Manager) DisableSite(name string) error {
+	if !m.useSitesAvailableLayout() {
+		confName := normalizeConfName(name)
+		confDPath := filepath.Join(m.configRoot, "conf.d", confName)
+		if _, err := os.Stat(confDPath); err == nil {
+			disabledName := strings.TrimSuffix(confName, ".conf") + ".disabled"
+			return os.Rename(confDPath, filepath.Join(m.configRoot, "conf.d", disabledName))
+		}
+		return nil
+	}
+
 	// Check if it's a conf.d file
 	confDPath := filepath.Join(m.configRoot, "conf.d", name)
 	if _, err := os.Stat(confDPath); err == nil {
@@ -305,6 +338,19 @@ func (m *Manager) DisableSite(name string) error {
 
 // DeleteSite removes a site config file (and its symlink if applicable).
 func (m *Manager) DeleteSite(name string) error {
+	if !m.useSitesAvailableLayout() {
+		confName := normalizeConfName(name)
+		confDPath := filepath.Join(m.configRoot, "conf.d", confName)
+		if _, err := os.Stat(confDPath); err == nil {
+			return os.Remove(confDPath)
+		}
+		disabledPath := filepath.Join(m.configRoot, "conf.d", strings.TrimSuffix(confName, ".conf")+".disabled")
+		if _, err := os.Stat(disabledPath); err == nil {
+			return os.Remove(disabledPath)
+		}
+		return os.ErrNotExist
+	}
+
 	// Try conf.d first
 	confDPath := filepath.Join(m.configRoot, "conf.d", name)
 	if _, err := os.Stat(confDPath); err == nil {
@@ -330,10 +376,10 @@ func (m *Manager) TestConfig() (string, bool) {
 // Reload sends SIGHUP to nginx (graceful reload).
 func (m *Manager) Reload() error {
 	logger.Infof("Reloading Nginx service config...")
-	if err := exec.Command("systemctl", "reload", "nginx").Run(); err != nil {
+	if err := runCommand("systemctl", "reload", "nginx"); err != nil {
 		logger.Debugf("systemctl reload failed, falling back to nginx -s reload...")
 		// Fallback: nginx -s reload
-		return exec.Command("nginx", "-s", "reload").Run()
+		return runCommand("nginx", "-s", "reload")
 	}
 	return nil
 }
@@ -341,9 +387,12 @@ func (m *Manager) Reload() error {
 // Restart restarts nginx.
 func (m *Manager) Restart() error {
 	logger.Infof("Restarting Nginx service...")
-	if err := exec.Command("systemctl", "restart", "nginx").Run(); err != nil {
+	if err := runCommand("systemctl", "restart", "nginx"); err != nil {
 		logger.Debugf("systemctl restart failed, falling back to stop and start...")
-		return exec.Command("nginx", "-s", "stop").Run()
+		if stopErr := runCommand("nginx", "-s", "stop"); stopErr != nil {
+			return stopErr
+		}
+		return runCommand("nginx")
 	}
 	return nil
 }
@@ -351,13 +400,13 @@ func (m *Manager) Restart() error {
 // Stop stops nginx.
 func (m *Manager) Stop() error {
 	logger.Infof("Stopping Nginx service...")
-	return exec.Command("systemctl", "stop", "nginx").Run()
+	return runCommand("systemctl", "stop", "nginx")
 }
 
 // Start starts nginx.
 func (m *Manager) Start() error {
 	logger.Infof("Starting Nginx service...")
-	return exec.Command("systemctl", "start", "nginx").Run()
+	return runCommand("systemctl", "start", "nginx")
 }
 
 // GetMainConfig returns the content of nginx.conf.
@@ -492,4 +541,34 @@ func buildSiteConfig(serverName string, port int, upstream string) string {
     }
 }
 `, serverName, upstream)
+}
+
+func (m *Manager) preferredNewSitePath(name string) (string, error) {
+	if m.useSitesAvailableLayout() {
+		return filepath.Join(m.configRoot, "sites-available", name), nil
+	}
+	return filepath.Join(m.configRoot, "conf.d", normalizeConfName(name)), nil
+}
+
+func (m *Manager) useSitesAvailableLayout() bool {
+	available := filepath.Join(m.configRoot, "sites-available")
+	enabled := filepath.Join(m.configRoot, "sites-enabled")
+	if _, err := os.Stat(available); err != nil {
+		return false
+	}
+	if _, err := os.Stat(enabled); err != nil {
+		return false
+	}
+	data, err := os.ReadFile(filepath.Join(m.configRoot, "nginx.conf"))
+	if err != nil {
+		return true
+	}
+	return strings.Contains(string(data), "sites-enabled")
+}
+
+func normalizeConfName(name string) string {
+	if strings.HasSuffix(name, ".conf") || strings.HasSuffix(name, ".disabled") {
+		return name
+	}
+	return name + ".conf"
 }

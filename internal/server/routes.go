@@ -11,13 +11,18 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Yash121l/Vessel/internal/backup"
 	"github.com/Yash121l/Vessel/internal/deployment"
 	"github.com/Yash121l/Vessel/internal/docker"
 	"github.com/Yash121l/Vessel/internal/logger"
 	"github.com/Yash121l/Vessel/internal/nginx"
+	"github.com/Yash121l/Vessel/internal/operations"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
 	"github.com/gin-gonic/gin"
@@ -29,6 +34,8 @@ func registerRoutes(
 	db *store.DB,
 	reg *registry.Registry,
 	engine *deployment.Engine,
+	ops *operations.Manager,
+	backupMgr *backup.Manager,
 	version string,
 ) {
 	// Public setup/auth endpoints
@@ -43,6 +50,8 @@ func registerRoutes(
 	r.Use(requirePermission())
 	r.GET("/me", me(version))
 	r.POST("/logout", logout(db))
+	r.GET("/operations", listOperations(db))
+	r.GET("/operations/:id", getOperation(db))
 
 	// Vessel app users (login accounts)
 	r.GET("/users", listUsers(db))
@@ -64,29 +73,29 @@ func registerRoutes(
 
 	// Deployments
 	r.GET("/deployments", listDeployments(db, reg))
-	r.POST("/deployments", createDeployment(engine, reg))
+	r.POST("/deployments", createDeployment(engine, reg, ops))
 	r.GET("/deployments/:id", getDeployment(db, reg))
-	r.DELETE("/deployments/:id", removeDeployment(engine))
+	r.DELETE("/deployments/:id", removeDeployment(db, engine, ops))
 
 	// Deployment actions
-	r.POST("/deployments/:id/start", startDeployment(engine))
-	r.POST("/deployments/:id/stop", stopDeployment(engine))
-	r.POST("/deployments/:id/restart", restartDeployment(engine))
-	r.POST("/deployments/:id/update", updateDeployment(engine))
+	r.POST("/deployments/:id/start", startDeployment(db, engine, ops))
+	r.POST("/deployments/:id/stop", stopDeployment(db, engine, ops))
+	r.POST("/deployments/:id/restart", restartDeployment(db, engine, ops))
+	r.POST("/deployments/:id/update", updateDeployment(db, engine, ops))
 
 	// Logs (SSE streaming)
 	r.GET("/deployments/:id/logs", streamLogs(engine))
 	r.GET("/deployments/:id/compose", getComposeDetail(engine))
 
 	// Multi-service compose stack deployment
-	r.POST("/deployments/compose", createComposeDeployment(engine, reg))
+	r.POST("/deployments/compose", createComposeDeployment(engine, reg, ops))
 
 	// Docker discovery
 	r.GET("/docker/containers", listDockerContainers())
 	r.GET("/docker/compose/stacks", listComposeStacks())
 	r.DELETE("/docker/compose/stacks/:name", removeComposeStack())
-	r.POST("/docker/import", importContainer(db))
-	r.POST("/docker/deploy", deployCustomContainer(engine))
+	r.POST("/docker/import", importContainer(db, ops))
+	r.POST("/docker/deploy", deployCustomContainer(engine, ops))
 	r.GET("/docker/search", dockerHubSearch())
 	r.GET("/docker/containers/:id/logs", streamContainerLogs())
 	r.POST("/docker/containers/:id/stop", stopContainer())
@@ -98,7 +107,9 @@ func registerRoutes(
 	r.PUT("/settings", updateSettings(db))
 
 	// Self-update
-	r.GET("/system/update", selfUpdate())
+	r.GET("/system/update", selfUpdate(ops))
+	r.GET("/system/backups", listBackups(backupMgr))
+	r.POST("/system/backups", createBackup(backupMgr, ops))
 
 	// System info
 	r.GET("/system/ip", systemIP())
@@ -107,10 +118,10 @@ func registerRoutes(
 	// Nginx management
 	ngx := nginx.NewManager()
 	r.GET("/nginx/status", nginxStatus(ngx))
-	r.POST("/nginx/reload", nginxReload(ngx))
-	r.POST("/nginx/restart", nginxRestart(ngx))
-	r.POST("/nginx/stop", nginxStop(ngx))
-	r.POST("/nginx/start", nginxStart(ngx))
+	r.POST("/nginx/reload", nginxReload(ngx, ops))
+	r.POST("/nginx/restart", nginxRestart(ngx, ops))
+	r.POST("/nginx/stop", nginxStop(ngx, ops))
+	r.POST("/nginx/start", nginxStart(ngx, ops))
 	r.GET("/nginx/test", nginxTest(ngx))
 	r.GET("/nginx/config", nginxGetMainConfig(ngx))
 	r.PUT("/nginx/config", nginxSaveMainConfig(ngx))
@@ -125,6 +136,134 @@ func registerRoutes(
 	r.GET("/nginx/logs/:type/stream", nginxStreamLogs(ngx))
 	r.GET("/nginx/stats", nginxGetStats(ngx))
 
+}
+
+func listOperations(db *store.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user := currentUser(c)
+		if user == nil || !roleAtLeast(user.Role, roleOperator) {
+			c.JSON(403, gin.H{"error": "insufficient permissions"})
+			return
+		}
+		limit := 50
+		if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+				limit = parsed
+			}
+		}
+		ops, err := db.ListOperations(limit, strings.TrimSpace(c.Query("resource_type")), strings.TrimSpace(c.Query("resource_id")))
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		if ops == nil {
+			ops = []*store.Operation{}
+		}
+		ops = filterVisibleOperations(user, ops)
+		c.JSON(200, gin.H{"operations": ops})
+	}
+}
+
+func getOperation(db *store.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user := currentUser(c)
+		if user == nil || !roleAtLeast(user.Role, roleOperator) {
+			c.JSON(403, gin.H{"error": "insufficient permissions"})
+			return
+		}
+		op, err := db.GetOperation(c.Param("id"))
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		if op == nil {
+			c.JSON(404, gin.H{"error": "operation not found"})
+			return
+		}
+		if !canViewOperation(user, op) {
+			c.JSON(403, gin.H{"error": "insufficient permissions"})
+			return
+		}
+		c.JSON(200, gin.H{"operation": op})
+	}
+}
+
+func filterVisibleOperations(user *store.User, ops []*store.Operation) []*store.Operation {
+	if user == nil {
+		return []*store.Operation{}
+	}
+	if roleAtLeast(user.Role, roleAdmin) {
+		return ops
+	}
+	out := make([]*store.Operation, 0, len(ops))
+	for _, op := range ops {
+		if canViewOperation(user, op) {
+			out = append(out, op)
+		}
+	}
+	return out
+}
+
+func canViewOperation(user *store.User, op *store.Operation) bool {
+	if user == nil || op == nil {
+		return false
+	}
+	if roleAtLeast(user.Role, roleAdmin) {
+		return true
+	}
+	if !roleAtLeast(user.Role, roleOperator) {
+		return false
+	}
+	return op.ResourceType == "deployment"
+}
+
+func listBackups(backupMgr *backup.Manager) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		archives, err := backupMgr.ListArchives()
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"backups": archives})
+	}
+}
+
+func createBackup(backupMgr *backup.Manager, ops *operations.Manager) gin.HandlerFunc {
+	type request struct {
+		OutputPath string `json:"output_path"`
+	}
+	return func(c *gin.Context) {
+		var req request
+		if c.Request.ContentLength > 0 {
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+		}
+		outputPath := strings.TrimSpace(req.OutputPath)
+		if outputPath == "" {
+			outputPath = backupMgr.DefaultArchivePath()
+		}
+		op, err := ops.Start(operationSpec(c, "create_backup", "backup", filepath.Base(outputPath), map[string]any{
+			"output_path": outputPath,
+		}), func(ctx context.Context, run *operations.Run) error {
+			return run.Step(ctx, "archive_runtime", "Archive runtime state", func(ctx context.Context, step *operations.Step) error {
+				_ = ctx
+				step.Logf("Writing backup archive to %s", outputPath)
+				if _, err := backupMgr.CreateArchive(outputPath); err != nil {
+					return err
+				}
+				run.BindResource("backup", outputPath, filepath.Base(outputPath))
+				run.SetSummary(fmt.Sprintf("Backup created at %s", outputPath))
+				return nil
+			})
+		})
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(202, gin.H{"operation": op})
+	}
 }
 
 // --- Apps ---
@@ -251,7 +390,7 @@ type createDeploymentRequest struct {
 	SkipServices []string `json:"skip_services"`
 }
 
-func createDeployment(engine *deployment.Engine, reg *registry.Registry) gin.HandlerFunc {
+func createDeployment(engine *deployment.Engine, reg *registry.Registry, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req createDeploymentRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -301,33 +440,49 @@ func createDeployment(engine *deployment.Engine, reg *registry.Registry) gin.Han
 			skipSet[s] = true
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
-		defer cancel()
-
-		d, err := engine.Deploy(ctx, deployment.DeployRequest{
-			AppID:        req.AppID,
-			Name:         req.Name,
-			Domain:       req.Domain,
-			Env:          req.Env,
-			SkipServices: skipSet,
+		op, err := ops.Start(operationSpec(c, "deploy", "deployment", req.Name, map[string]any{
+			"app_id":        req.AppID,
+			"domain":        req.Domain,
+			"skip_services": req.SkipServices,
+		}), func(ctx context.Context, run *operations.Run) error {
+			_, runErr := engine.DeployWithRun(ctx, deployment.DeployRequest{
+				AppID:        req.AppID,
+				Name:         req.Name,
+				Domain:       req.Domain,
+				Env:          req.Env,
+				SkipServices: skipSet,
+			}, run)
+			return runErr
 		})
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(201, deploymentResponse(reg, d))
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 
-func removeDeployment(engine *deployment.Engine) gin.HandlerFunc {
+func removeDeployment(db *store.DB, engine *deployment.Engine, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
-		defer cancel()
-		if err := engine.Remove(ctx, c.Param("id")); err != nil {
+		depl, err := db.GetDeployment(c.Param("id"))
+		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(200, gin.H{"status": "removed"})
+		if depl == nil {
+			c.JSON(404, gin.H{"error": "deployment not found"})
+			return
+		}
+		op, err := ops.Start(operationSpec(c, "remove_deployment", "deployment", depl.Name, map[string]any{
+			"deployment_id": depl.ID,
+		}), func(ctx context.Context, run *operations.Run) error {
+			return engine.RemoveWithRun(ctx, depl.ID, run)
+		})
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 
@@ -347,51 +502,99 @@ func getComposeDetail(engine *deployment.Engine) gin.HandlerFunc {
 
 // --- Actions ---
 
-func startDeployment(engine *deployment.Engine) gin.HandlerFunc {
+func startDeployment(db *store.DB, engine *deployment.Engine, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
-		defer cancel()
-		if err := engine.Start(ctx, c.Param("id")); err != nil {
+		depl, err := db.GetDeployment(c.Param("id"))
+		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(200, gin.H{"status": "started"})
+		if depl == nil {
+			c.JSON(404, gin.H{"error": "deployment not found"})
+			return
+		}
+		op, err := ops.Start(operationSpec(c, "start_deployment", "deployment", depl.Name, map[string]any{
+			"deployment_id": depl.ID,
+		}), func(ctx context.Context, run *operations.Run) error {
+			return engine.StartWithRun(ctx, depl.ID, run)
+		})
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 
-func stopDeployment(engine *deployment.Engine) gin.HandlerFunc {
+func stopDeployment(db *store.DB, engine *deployment.Engine, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Minute)
-		defer cancel()
-		if err := engine.Stop(ctx, c.Param("id")); err != nil {
+		depl, err := db.GetDeployment(c.Param("id"))
+		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(200, gin.H{"status": "stopped"})
+		if depl == nil {
+			c.JSON(404, gin.H{"error": "deployment not found"})
+			return
+		}
+		op, err := ops.Start(operationSpec(c, "stop_deployment", "deployment", depl.Name, map[string]any{
+			"deployment_id": depl.ID,
+		}), func(ctx context.Context, run *operations.Run) error {
+			return engine.StopWithRun(ctx, depl.ID, run)
+		})
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 
-func restartDeployment(engine *deployment.Engine) gin.HandlerFunc {
+func restartDeployment(db *store.DB, engine *deployment.Engine, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
-		defer cancel()
-		if err := engine.Restart(ctx, c.Param("id")); err != nil {
+		depl, err := db.GetDeployment(c.Param("id"))
+		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(200, gin.H{"status": "restarted"})
+		if depl == nil {
+			c.JSON(404, gin.H{"error": "deployment not found"})
+			return
+		}
+		op, err := ops.Start(operationSpec(c, "restart_deployment", "deployment", depl.Name, map[string]any{
+			"deployment_id": depl.ID,
+		}), func(ctx context.Context, run *operations.Run) error {
+			return engine.RestartWithRun(ctx, depl.ID, run)
+		})
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 
-func updateDeployment(engine *deployment.Engine) gin.HandlerFunc {
+func updateDeployment(db *store.DB, engine *deployment.Engine, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
-		defer cancel()
-		if err := engine.Update(ctx, c.Param("id")); err != nil {
+		depl, err := db.GetDeployment(c.Param("id"))
+		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(200, gin.H{"status": "updated"})
+		if depl == nil {
+			c.JSON(404, gin.H{"error": "deployment not found"})
+			return
+		}
+		op, err := ops.Start(operationSpec(c, "update_deployment", "deployment", depl.Name, map[string]any{
+			"deployment_id": depl.ID,
+		}), func(ctx context.Context, run *operations.Run) error {
+			return engine.UpdateWithRun(ctx, depl.ID, run)
+		})
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 
@@ -496,7 +699,7 @@ type importContainerRequest struct {
 	Name        string `json:"name"`
 }
 
-func importContainer(db *store.DB) gin.HandlerFunc {
+func importContainer(db *store.DB, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req importContainerRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -510,63 +713,66 @@ func importContainer(db *store.DB) gin.HandlerFunc {
 			}
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
-		defer cancel()
+		op, err := ops.Start(operationSpec(c, "import_container", "deployment", req.Name, map[string]any{
+			"container_id": req.ContainerID,
+			"name":         req.Name,
+		}), func(ctx context.Context, run *operations.Run) error {
+			return run.Step(ctx, "discover_container", "Inspect Docker container", func(ctx context.Context, step *operations.Step) error {
+				containers, err := docker.ListContainers(ctx)
+				if err != nil {
+					return err
+				}
+				var found *docker.Container
+				for i := range containers {
+					if containers[i].ID == req.ContainerID ||
+						strings.HasPrefix(containers[i].ID, req.ContainerID) ||
+						containers[i].Name == req.ContainerID {
+						found = &containers[i]
+						break
+					}
+				}
+				if found == nil {
+					return fmt.Errorf("container not found")
+				}
 
-		containers, err := docker.ListContainers(ctx)
+				name := req.Name
+				if name == "" {
+					name = found.Name
+				}
+				existing, _ := db.GetDeploymentByName(name)
+				if existing != nil {
+					return fmt.Errorf("already imported as: %s", name)
+				}
+
+				status := "running"
+				if found.State != "running" {
+					status = "stopped"
+				}
+				d := &store.Deployment{
+					ID:          uuid.New().String(),
+					Name:        name,
+					AppID:       guessAppID(found.Image, found.Name),
+					Status:      status,
+					ComposeDir:  "",
+					Imported:    true,
+					ContainerID: found.ID,
+					Image:       found.Image,
+					Ports:       strings.Join(found.Ports, ", "),
+				}
+				if err := db.CreateDeployment(d); err != nil {
+					return err
+				}
+				run.BindResource("deployment", d.ID, d.Name)
+				run.SetSummary(fmt.Sprintf("Imported container %s", d.Name))
+				step.Logf("Imported Docker container %s (%s)", d.Name, d.ContainerID)
+				return nil
+			})
+		})
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-
-		var found *docker.Container
-		for i := range containers {
-			if containers[i].ID == req.ContainerID ||
-				strings.HasPrefix(containers[i].ID, req.ContainerID) ||
-				containers[i].Name == req.ContainerID {
-				found = &containers[i]
-				break
-			}
-		}
-		if found == nil {
-			c.JSON(404, gin.H{"error": "container not found"})
-			return
-		}
-
-		name := req.Name
-		if name == "" {
-			name = found.Name
-		}
-
-		// Check not already imported
-		existing, _ := db.GetDeploymentByName(name)
-		if existing != nil {
-			c.JSON(409, gin.H{"error": "already imported as: " + name})
-			return
-		}
-
-		status := "running"
-		if found.State != "running" {
-			status = "stopped"
-		}
-
-		d := &store.Deployment{
-			ID:          uuid.New().String(),
-			Name:        name,
-			AppID:       guessAppID(found.Image, found.Name),
-			Status:      status,
-			ComposeDir:  "",
-			Imported:    true,
-			ContainerID: found.ID,
-			Image:       found.Image,
-			Ports:       strings.Join(found.Ports, ", "),
-		}
-
-		if err := db.CreateDeployment(d); err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(201, d)
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 
@@ -649,7 +855,7 @@ func restartContainer() gin.HandlerFunc {
 }
 
 // deployCustomContainer deploys an arbitrary Docker image as a Vessel-managed deployment.
-func deployCustomContainer(engine *deployment.Engine) gin.HandlerFunc {
+func deployCustomContainer(engine *deployment.Engine, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			Image  string `json:"image"  binding:"required"`
@@ -734,23 +940,23 @@ func deployCustomContainer(engine *deployment.Engine) gin.HandlerFunc {
 			})
 		}
 
-		// Register the synthetic template temporarily
-		engine.RegisterTemp(tmpl)
-
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
-		defer cancel()
-
-		d, err := engine.Deploy(ctx, deployment.DeployRequest{
-			AppID:  req.Name,
-			Name:   req.Name,
-			Domain: req.Domain,
-			Env:    req.Env,
+		op, err := ops.Start(operationSpec(c, "deploy_custom_container", "deployment", req.Name, map[string]any{
+			"image":  req.Image,
+			"domain": req.Domain,
+		}), func(ctx context.Context, run *operations.Run) error {
+			_, runErr := engine.DeployTemplateWithRun(ctx, tmpl, deployment.DeployRequest{
+				AppID:  req.Name,
+				Name:   req.Name,
+				Domain: req.Domain,
+				Env:    req.Env,
+			}, run)
+			return runErr
 		})
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(201, d)
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 
@@ -866,12 +1072,28 @@ func removeComposeStack() gin.HandlerFunc {
 // Strategy: run `vessel update --no-restart` to download and replace the binary,
 // stream all output, send __DONE__, flush, then restart the service in a
 // goroutine with a short delay so the response has time to reach the client.
-func selfUpdate() gin.HandlerFunc {
+func selfUpdate(ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Content-Type", "text/event-stream")
 		c.Header("Cache-Control", "no-cache")
 		c.Header("Connection", "keep-alive")
 		c.Header("X-Accel-Buffering", "no")
+		flusher, _ := c.Writer.(http.Flusher)
+		writeSSE := func(line string) {
+			fmt.Fprintf(c.Writer, "data: %s\n\n", line)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+
+		spec := operationSpec(c, "self_update", "system", "vessel", nil)
+		op, run, err := ops.Begin(spec)
+		if err != nil {
+			writeSSE("ERROR: " + err.Error())
+			return
+		}
+		run.BindResource("system", "vessel", "vessel")
+		writeSSE("Tracking operation " + op.ID)
 
 		exe, err := os.Executable()
 		if err != nil {
@@ -889,68 +1111,75 @@ func selfUpdate() gin.HandlerFunc {
 		} else {
 			args = []string{"update", "--no-restart"}
 		}
-		cmd := exec.CommandContext(ctx, exe, args...)
-		stdout, _ := cmd.StdoutPipe()
-		stderr, _ := cmd.StderrPipe()
+		updateErr := run.Step(ctx, "update_binary", "Download and replace binary", func(ctx context.Context, step *operations.Step) error {
+			cmd := exec.CommandContext(ctx, exe, args...)
+			stdout, _ := cmd.StdoutPipe()
+			stderr, _ := cmd.StderrPipe()
 
-		if err := cmd.Start(); err != nil {
-			c.Stream(func(w io.Writer) bool {
-				fmt.Fprintf(w, "data: ERROR: %s\n\n", err.Error())
-				return false
-			})
+			if err := cmd.Start(); err != nil {
+				return err
+			}
+
+			lines := make(chan string, 64)
+			var scanWG sync.WaitGroup
+			scan := func(r io.Reader) {
+				defer scanWG.Done()
+				buf := bufio.NewScanner(r)
+				for buf.Scan() {
+					lines <- buf.Text()
+				}
+			}
+			scanWG.Add(2)
+			go scan(stdout)
+			go scan(stderr)
+
+			done := make(chan error, 1)
+			go func() {
+				waitErr := cmd.Wait()
+				scanWG.Wait()
+				close(lines)
+				done <- waitErr
+			}()
+
+			for {
+				select {
+				case line, ok := <-lines:
+					if !ok {
+						lines = nil
+						continue
+					}
+					step.Logf("%s", line)
+					writeSSE(line)
+				case err := <-done:
+					return err
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+		})
+		if finishErr := ops.Finish(run, spec, updateErr); finishErr != nil && updateErr == nil {
+			updateErr = finishErr
+		}
+		if updateErr != nil {
+			writeSSE("ERROR: " + updateErr.Error())
 			return
 		}
 
-		lines := make(chan string, 64)
-		scan := func(r io.Reader) {
-			buf := bufio.NewScanner(r)
-			for buf.Scan() {
-				lines <- buf.Text()
-			}
-		}
-		go scan(stdout)
-		go scan(stderr)
-
-		done := make(chan error, 1)
-		go func() { done <- cmd.Wait(); close(lines) }()
-
-		var updateErr error
-		c.Stream(func(w io.Writer) bool {
-			select {
-			case line, ok := <-lines:
-				if !ok {
-					return false
-				}
-				fmt.Fprintf(w, "data: %s\n\n", line)
-				return true
-			case err := <-done:
-				updateErr = err
-				if err != nil {
-					fmt.Fprintf(w, "data: ERROR: %s\n\n", err.Error())
-				} else {
-					fmt.Fprintf(w, "data: Restarting service…\n\n")
-					fmt.Fprintf(w, "data: __DONE__\n\n")
-				}
-				return false
-			case <-ctx.Done():
-				return false
-			}
-		})
+		writeSSE("Restarting service…")
+		writeSSE("__DONE__")
 
 		// Restart the service after a short delay so the SSE response has time
 		// to be flushed and received by the client before the server dies.
-		if updateErr == nil {
-			go func() {
-				time.Sleep(500 * time.Millisecond)
-				_ = exec.Command("systemctl", "restart", "vessel").Run()
-			}()
-		}
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			_ = exec.Command("systemctl", "restart", "vessel").Run()
+		}()
 	}
 }
 
 // The caller provides a primary service plus zero or more sidecar services,
 // and Vessel generates, writes, and starts the compose file.
-func createComposeDeployment(engine *deployment.Engine, reg *registry.Registry) gin.HandlerFunc {
+func createComposeDeployment(engine *deployment.Engine, reg *registry.Registry, ops *operations.Manager) gin.HandlerFunc {
 	type svcReq struct {
 		Name  string `json:"name"         binding:"required"`
 		Image string `json:"image"        binding:"required"`
@@ -1088,23 +1317,46 @@ func createComposeDeployment(engine *deployment.Engine, reg *registry.Registry) 
 			}
 		}
 
-		engine.RegisterTemp(tmpl)
-
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
-		defer cancel()
-
-		d, err := engine.Deploy(ctx, deployment.DeployRequest{
-			AppID:  r.Name,
-			Name:   r.Name,
-			Domain: r.Domain,
-			Env:    env,
+		op, err := ops.Start(operationSpec(c, "deploy_compose_stack", "deployment", r.Name, map[string]any{
+			"domain":   r.Domain,
+			"sidecars": len(r.Sidecars),
+		}), func(ctx context.Context, run *operations.Run) error {
+			_, runErr := engine.DeployTemplateWithRun(ctx, tmpl, deployment.DeployRequest{
+				AppID:  r.Name,
+				Name:   r.Name,
+				Domain: r.Domain,
+				Env:    env,
+			}, run)
+			return runErr
 		})
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(201, deploymentResponse(reg, d))
+		c.JSON(202, gin.H{"operation": op})
 	}
+}
+
+func operationSpec(c *gin.Context, kind, resourceType, resourceName string, metadata map[string]any) operations.Spec {
+	spec := operations.Spec{
+		Kind:         kind,
+		ResourceType: resourceType,
+		ResourceName: resourceName,
+		Metadata:     metadata,
+	}
+	if user := currentUser(c); user != nil {
+		spec.ActorUserID = user.ID
+		spec.ActorUsername = user.Username
+	}
+	switch kind {
+	case "deploy", "deploy_custom_container", "deploy_compose_stack", "update_deployment":
+		spec.Timeout = 15 * time.Minute
+	case "remove_deployment":
+		spec.Timeout = 5 * time.Minute
+	default:
+		spec.Timeout = 3 * time.Minute
+	}
+	return spec
 }
 func guessAppID(image, name string) string {
 	s := strings.ToLower(image + " " + name)
@@ -1144,47 +1396,86 @@ func nginxStatus(ngx *nginx.Manager) gin.HandlerFunc {
 	}
 }
 
-func nginxReload(ngx *nginx.Manager) gin.HandlerFunc {
+func nginxReload(ngx *nginx.Manager, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if out, ok := ngx.TestConfig(); !ok {
-			c.JSON(400, gin.H{"error": "config test failed", "output": out})
-			return
-		}
-		if err := ngx.Reload(); err != nil {
+		op, err := ops.Start(operationSpec(c, "nginx_reload", "system", "nginx", nil), func(ctx context.Context, run *operations.Run) error {
+			return run.Step(ctx, "reload_nginx", "Reload nginx", func(_ context.Context, step *operations.Step) error {
+				if out, ok := ngx.TestConfig(); !ok {
+					step.Logf("nginx config test failed: %s", strings.TrimSpace(out))
+					return fmt.Errorf("config test failed: %s", strings.TrimSpace(out))
+				}
+				if err := ngx.Reload(); err != nil {
+					return err
+				}
+				run.SetSummary("Nginx configuration reloaded")
+				return nil
+			})
+		})
+		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(200, gin.H{"status": "reloaded"})
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 
-func nginxRestart(ngx *nginx.Manager) gin.HandlerFunc {
+func nginxRestart(ngx *nginx.Manager, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := ngx.Restart(); err != nil {
+		op, err := ops.Start(operationSpec(c, "nginx_restart", "system", "nginx", nil), func(ctx context.Context, run *operations.Run) error {
+			return run.Step(ctx, "restart_nginx", "Restart nginx", func(_ context.Context, step *operations.Step) error {
+				_ = step
+				if err := ngx.Restart(); err != nil {
+					return err
+				}
+				run.SetSummary("Nginx restarted")
+				return nil
+			})
+		})
+		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(200, gin.H{"status": "restarted"})
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 
-func nginxStop(ngx *nginx.Manager) gin.HandlerFunc {
+func nginxStop(ngx *nginx.Manager, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := ngx.Stop(); err != nil {
+		op, err := ops.Start(operationSpec(c, "nginx_stop", "system", "nginx", nil), func(ctx context.Context, run *operations.Run) error {
+			return run.Step(ctx, "stop_nginx", "Stop nginx", func(_ context.Context, step *operations.Step) error {
+				_ = step
+				if err := ngx.Stop(); err != nil {
+					return err
+				}
+				run.SetSummary("Nginx stopped")
+				return nil
+			})
+		})
+		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(200, gin.H{"status": "stopped"})
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 
-func nginxStart(ngx *nginx.Manager) gin.HandlerFunc {
+func nginxStart(ngx *nginx.Manager, ops *operations.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := ngx.Start(); err != nil {
+		op, err := ops.Start(operationSpec(c, "nginx_start", "system", "nginx", nil), func(ctx context.Context, run *operations.Run) error {
+			return run.Step(ctx, "start_nginx", "Start nginx", func(_ context.Context, step *operations.Step) error {
+				_ = step
+				if err := ngx.Start(); err != nil {
+					return err
+				}
+				run.SetSummary("Nginx started")
+				return nil
+			})
+		})
+		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(200, gin.H{"status": "started"})
+		c.JSON(202, gin.H{"operation": op})
 	}
 }
 

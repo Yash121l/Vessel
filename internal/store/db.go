@@ -47,6 +47,8 @@ func (db *DB) Migrate() error {
 		`ALTER TABLE deployments ADD COLUMN image TEXT`,
 		`ALTER TABLE deployments ADD COLUMN ports TEXT`,
 		`ALTER TABLE users ADD COLUMN last_login_at DATETIME`,
+		`ALTER TABLE operations ADD COLUMN resource_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE operations ADD COLUMN metadata TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, m := range migrations {
 		// Ignore errors — column likely already exists
@@ -102,6 +104,39 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS operations (
+    id            TEXT PRIMARY KEY,
+    kind          TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_id   TEXT,
+    resource_name TEXT NOT NULL DEFAULT '',
+    status        TEXT NOT NULL DEFAULT 'queued',
+    summary       TEXT NOT NULL DEFAULT '',
+    error         TEXT NOT NULL DEFAULT '',
+    actor_user_id TEXT NOT NULL DEFAULT '',
+    actor_username TEXT NOT NULL DEFAULT '',
+    metadata      TEXT NOT NULL DEFAULT '',
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at    DATETIME,
+    finished_at   DATETIME,
+    updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS operation_steps (
+    id          TEXT PRIMARY KEY,
+    operation_id TEXT NOT NULL REFERENCES operations(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL DEFAULT 0,
+    step_key    TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    details     TEXT NOT NULL DEFAULT '',
+    output      TEXT NOT NULL DEFAULT '',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at  DATETIME,
+    finished_at DATETIME,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TRIGGER IF NOT EXISTS deployments_updated_at
     AFTER UPDATE ON deployments
     BEGIN
@@ -112,5 +147,17 @@ CREATE TRIGGER IF NOT EXISTS users_updated_at
     AFTER UPDATE ON users
     BEGIN
         UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+
+CREATE TRIGGER IF NOT EXISTS operations_updated_at
+    AFTER UPDATE ON operations
+    BEGIN
+        UPDATE operations SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+
+CREATE TRIGGER IF NOT EXISTS operation_steps_updated_at
+    AFTER UPDATE ON operation_steps
+    BEGIN
+        UPDATE operation_steps SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END;
 `

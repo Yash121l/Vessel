@@ -5,13 +5,13 @@ set -euo pipefail
 
 # Dynamically fetch the latest release tag from GitHub if not specified
 if [[ -z "${VESSEL_VERSION:-}" ]]; then
-  # Try to fetch latest tag name, e.g. "v1.1.5"
+  # Try to fetch latest tag name, e.g. "v1.1.7"
   LATEST_TAG=$(curl -fsSL https://api.github.com/repos/Yash121l/Vessel/releases/latest | grep '"tag_name":' | cut -d'"' -f4 || true)
   if [[ -n "$LATEST_TAG" ]]; then
     # Strip leading 'v' if present
     VESSEL_VERSION="${LATEST_TAG#v}"
   else
-    VESSEL_VERSION="1.1.5"
+    VESSEL_VERSION="1.1.7"
   fi
 else
   # If specified via env, strip leading 'v' as well
@@ -31,6 +31,14 @@ info()    { echo -e "  ${CYAN}→${NC}  $*"; }
 success() { echo -e "  ${GREEN}✓${NC}  $*"; }
 warn()    { echo -e "  ${YELLOW}!${NC}  $*"; }
 error()   { echo -e "  ${RED}✗${NC}  $*" >&2; exit 1; }
+
+rpm_install() {
+  if command -v dnf >/dev/null 2>&1; then
+    dnf install -y "$@" -q 2>/dev/null || yum install -y "$@" -q
+  else
+    yum install -y "$@" -q
+  fi
+}
 
 # ── Preflight ────────────────────────────────────────────────────────────────
 [[ $EUID -ne 0 ]] && error "Run as root: curl -sSL ... | sudo bash"
@@ -92,9 +100,9 @@ build_from_source() {
   if ! command -v git >/dev/null 2>&1; then
     info "Installing git..."
     case "$DISTRO" in
-      amzn)                    dnf install -y git -q ;;
+      amzn)                    rpm_install git ;;
       ubuntu|debian)           apt-get install -y git -q ;;
-      centos|rhel|fedora|rocky|almalinux) yum install -y git -q ;;
+      centos|rhel|fedora|rocky|almalinux) rpm_install git ;;
       *) error "Cannot install git on distro: $DISTRO" ;;
     esac
   fi
@@ -151,7 +159,7 @@ install_compose() {
       apt-get install -y docker-compose-plugin -q
       ;;
     centos|rhel|fedora|rocky|almalinux)
-      yum install -y docker-compose-plugin -q
+      rpm_install docker-compose-plugin
       ;;
     *)
       # Install binary into Docker CLI plugins directory
@@ -167,72 +175,59 @@ install_compose() {
   success "Docker Compose installed"
 }
 
-# ── Step 4: Install Caddy ────────────────────────────────────────────────────
-install_caddy() {
-  if command -v caddy >/dev/null 2>&1; then
-    info "Caddy already installed — skipping"
-    systemctl enable --now caddy 2>/dev/null || true
+# ── Step 4: Install Nginx ────────────────────────────────────────────────────
+install_nginx() {
+  if command -v nginx >/dev/null 2>&1; then
+    info "Nginx already installed — skipping"
+    systemctl enable --now nginx 2>/dev/null || true
     return
   fi
 
-  info "Installing Caddy..."
+  info "Installing Nginx..."
   case "$DISTRO" in
+    amzn)
+      dnf install -y nginx -q 2>/dev/null || yum install -y nginx -q
+      systemctl enable --now nginx
+      ;;
     ubuntu|debian)
-      apt-get install -y debian-keyring debian-archive-keyring apt-transport-https -q
-      curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-        | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-      curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-        | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
       apt-get update -q
-      apt-get install -y caddy -q
-      systemctl enable --now caddy
+      apt-get install -y nginx -q
+      systemctl enable --now nginx
       ;;
     centos|rhel|fedora|rocky|almalinux)
-      curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/cfg/setup/config.rpm.txt' \
-        | tee /etc/yum.repos.d/caddy-stable.repo >/dev/null
-      yum install -y caddy -q
-      systemctl enable --now caddy
+      rpm_install nginx
+      systemctl enable --now nginx
       ;;
-    *)
-      # Amazon Linux + fallback: install binary + write systemd unit
-      CADDY_VERSION=$(curl -fsSL https://api.github.com/repos/caddyserver/caddy/releases/latest \
-        | grep '"tag_name"' | cut -d'"' -f4)
-      curl -fsSL \
-        "https://github.com/caddyserver/caddy/releases/download/${CADDY_VERSION}/caddy_${CADDY_VERSION#v}_linux_${ARCH_LABEL}.tar.gz" \
-        | tar -xz -C /usr/local/bin caddy
-      chmod +x /usr/local/bin/caddy
-      mkdir -p /etc/caddy /var/log/caddy
-
-      cat > /etc/systemd/system/caddy.service <<'UNIT'
-[Unit]
-Description=Caddy
-Documentation=https://caddyserver.com/docs/
-After=network.target network-online.target
-Requires=network-online.target
-
-[Service]
-Type=notify
-User=root
-ExecStart=/usr/local/bin/caddy run --environ --config /etc/caddy/Caddyfile
-ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --force
-TimeoutStopSec=5s
-LimitNOFILE=1048576
-PrivateTmp=true
-ProtectSystem=full
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
-      systemctl daemon-reload
-      systemctl enable --now caddy
-      ;;
+    *) error "Automatic nginx installation is not supported on distro: $DISTRO" ;;
   esac
-  success "Caddy installed"
+  success "Nginx installed"
 }
 
-# ── Step 5: Configure firewall ───────────────────────────────────────────────
+# ── Step 5: Install Certbot nginx plugin ─────────────────────────────────────
+install_certbot() {
+  if command -v certbot >/dev/null 2>&1 && certbot plugins 2>/dev/null | grep -qi nginx; then
+    info "Certbot nginx plugin already installed — skipping"
+    return
+  fi
+
+  info "Installing Certbot nginx plugin..."
+  case "$DISTRO" in
+    amzn)
+      dnf install -y certbot python3-certbot-nginx -q 2>/dev/null || yum install -y certbot python3-certbot-nginx -q
+      ;;
+    ubuntu|debian)
+      apt-get update -q
+      apt-get install -y certbot python3-certbot-nginx -q
+      ;;
+    centos|rhel|fedora|rocky|almalinux)
+      rpm_install certbot python3-certbot-nginx
+      ;;
+    *) error "Automatic certbot installation is not supported on distro: $DISTRO" ;;
+  esac
+  success "Certbot nginx plugin installed"
+}
+
+# ── Step 6: Configure firewall ───────────────────────────────────────────────
 configure_firewall() {
   info "Configuring firewall..."
   PORTS=("80/tcp" "443/tcp" "${VESSEL_PORT}/tcp")
@@ -254,7 +249,7 @@ configure_firewall() {
   fi
 }
 
-# ── Step 6: Write Vessel config + directories ────────────────────────────────
+# ── Step 7: Write Vessel config + directories ────────────────────────────────
 setup_vessel() {
   info "Setting up Vessel directories and config..."
 
@@ -262,8 +257,7 @@ setup_vessel() {
     "$VESSEL_CONFIG_DIR" \
     "$VESSEL_DATA_DIR/deployments" \
     "$VESSEL_DATA_DIR/templates" \
-    "$VESSEL_DATA_DIR/caddy/sites" \
-    /var/log/caddy
+    "$VESSEL_DATA_DIR/backups"
 
   # Write config only if it doesn't already exist
   if [[ ! -f "$VESSEL_CONFIG_DIR/config.yaml" ]]; then
@@ -273,23 +267,10 @@ data_dir: ${VESSEL_DATA_DIR}
 EOF
   fi
 
-  # Write a minimal Caddyfile if one doesn't exist
-  if [[ ! -f /etc/caddy/Caddyfile ]]; then
-    cat > /etc/caddy/Caddyfile <<EOF
-# Vessel-managed Caddyfile
-# Do not edit manually
-
-import ${VESSEL_DATA_DIR}/caddy/sites/*.caddy
-EOF
-    # Symlink so Caddy picks it up from its default location
-    [[ -d /etc/caddy ]] && ln -sf /etc/caddy/Caddyfile /etc/caddy/Caddyfile 2>/dev/null || true
-    systemctl reload caddy 2>/dev/null || true
-  fi
-
   success "Vessel configured"
 }
 
-# ── Step 7: Install systemd service ─────────────────────────────────────────
+# ── Step 8: Install systemd service ─────────────────────────────────────────
 install_service() {
   info "Installing systemd service..."
 
@@ -326,7 +307,8 @@ main() {
   install_vessel_binary
   install_docker
   install_compose
-  install_caddy
+  install_nginx
+  install_certbot
   configure_firewall
   setup_vessel
   install_service

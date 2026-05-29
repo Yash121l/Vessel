@@ -17,6 +17,7 @@ import (
 	"github.com/Yash121l/Vessel/internal/docker"
 	"github.com/Yash121l/Vessel/internal/logger"
 	"github.com/Yash121l/Vessel/internal/nginx"
+	"github.com/Yash121l/Vessel/internal/operations"
 	"github.com/Yash121l/Vessel/internal/proxy"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
@@ -28,17 +29,16 @@ type Engine struct {
 	cfg      *config.Config
 	db       *store.DB
 	registry *registry.Registry
-	proxy    *proxy.Manager
 	nginx    *nginx.Manager
 }
 
 // NewEngine creates a new deployment engine.
 func NewEngine(cfg *config.Config, db *store.DB, reg *registry.Registry, prx *proxy.Manager) *Engine {
+	_ = prx
 	return &Engine{
 		cfg:      cfg,
 		db:       db,
 		registry: reg,
-		proxy:    prx,
 		nginx:    nginx.NewManager(),
 	}
 }
@@ -55,19 +55,28 @@ type DeployRequest struct {
 	SkipServices map[string]bool
 }
 
-// RegisterTemp adds a synthetic template to the registry for one-off custom deployments.
-func (e *Engine) RegisterTemp(tmpl *registry.AppTemplate) {
-	e.registry.Register(tmpl)
-}
-
 // Deploy creates and starts a new deployment.
 func (e *Engine) Deploy(ctx context.Context, req DeployRequest) (*store.Deployment, error) {
+	return e.DeployWithRun(ctx, req, nil)
+}
+
+func (e *Engine) DeployWithRun(ctx context.Context, req DeployRequest, run *operations.Run) (_ *store.Deployment, err error) {
 	logger.Infof("Initiating deployment for app '%s' with name '%s'...", req.AppID, req.Name)
 	tmpl, ok := e.registry.Get(req.AppID)
 	if !ok {
 		return nil, fmt.Errorf("unknown app: %s", req.AppID)
 	}
+	return e.deployWithTemplate(ctx, tmpl, req, run)
+}
 
+func (e *Engine) DeployTemplateWithRun(ctx context.Context, tmpl *registry.AppTemplate, req DeployRequest, run *operations.Run) (_ *store.Deployment, err error) {
+	if tmpl == nil {
+		return nil, fmt.Errorf("template is required")
+	}
+	return e.deployWithTemplate(ctx, tmpl, req, run)
+}
+
+func (e *Engine) deployWithTemplate(ctx context.Context, tmpl *registry.AppTemplate, req DeployRequest, run *operations.Run) (_ *store.Deployment, err error) {
 	// Validate name uniqueness
 	existing, err := e.db.GetDeploymentByName(req.Name)
 	if err != nil {
@@ -90,53 +99,131 @@ func (e *Engine) Deploy(ctx context.Context, req DeployRequest) (*store.Deployme
 		Env:        req.Env,
 	}
 
-	// Generate and write compose file
-	cf, err := GenerateCompose(tmpl, d, req.SkipServices)
-	if err != nil {
-		return nil, fmt.Errorf("generate compose: %w", err)
-	}
-	if err := WriteCompose(cf, composeDir); err != nil {
-		return nil, fmt.Errorf("write compose: %w", err)
-	}
-	if err := WriteEnvFile(req.Env, composeDir); err != nil {
-		return nil, fmt.Errorf("write env: %w", err)
+	var (
+		deploymentCreated bool
+		siteConfigured    bool
+	)
+
+	defer func() {
+		if err == nil {
+			return
+		}
+		if run != nil {
+			_ = run.Step(context.Background(), "cleanup_partial_deploy", "Cleanup partial deployment", func(_ context.Context, step *operations.Step) error {
+				step.Logf("Cleaning up deployment directory %s", composeDir)
+				if deploymentCreated {
+					_ = e.db.UpdateDeploymentStatus(id, "error")
+				}
+				if composeDir != "" {
+					if derr := e.composeDown(context.Background(), composeDir, step.Writer()); derr != nil {
+						step.Logf("docker compose down cleanup failed: %v", derr)
+					}
+					if derr := os.RemoveAll(composeDir); derr != nil {
+						step.Logf("failed to remove deployment directory: %v", derr)
+					}
+				}
+				if siteConfigured {
+					siteName := req.Name + ".conf"
+					if derr := e.removeDeploymentSite(siteName, req.Domain); derr != nil {
+						step.Logf("failed to remove nginx site during cleanup: %v", derr)
+					}
+				}
+				if deploymentCreated {
+					if derr := e.db.DeleteDeployment(id); derr != nil {
+						step.Logf("failed to delete deployment record: %v", derr)
+					}
+				}
+				return nil
+			})
+		} else {
+			if deploymentCreated {
+				_ = e.db.UpdateDeploymentStatus(id, "error")
+			}
+			_ = e.composeDown(context.Background(), composeDir, nil)
+			_ = os.RemoveAll(composeDir)
+			if siteConfigured {
+				_ = e.removeDeploymentSite(req.Name+".conf", req.Domain)
+			}
+			if deploymentCreated {
+				_ = e.db.DeleteDeployment(id)
+			}
+		}
+	}()
+
+	var cf *ComposeFile
+	if err := stepRun(ctx, run, "generate_compose", "Generate compose bundle", func(_ *operations.Step) error {
+		var stepErr error
+		cf, stepErr = GenerateCompose(tmpl, d, req.SkipServices)
+		if stepErr != nil {
+			return fmt.Errorf("generate compose: %w", stepErr)
+		}
+		if stepErr = WriteCompose(cf, composeDir); stepErr != nil {
+			return fmt.Errorf("write compose: %w", stepErr)
+		}
+		if stepErr = WriteEnvFile(req.Env, composeDir); stepErr != nil {
+			return fmt.Errorf("write env: %w", stepErr)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
-	// Persist to DB
-	if err := e.db.CreateDeployment(d); err != nil {
-		return nil, fmt.Errorf("save deployment: %w", err)
+	if err := stepRun(ctx, run, "persist_deployment", "Persist deployment metadata", func(_ *operations.Step) error {
+		if stepErr := e.db.CreateDeployment(d); stepErr != nil {
+			return fmt.Errorf("save deployment: %w", stepErr)
+		}
+		deploymentCreated = true
+		if run != nil {
+			run.BindResource("deployment", d.ID, d.Name)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
-	// Pull images
-	if err := e.composePull(ctx, composeDir); err != nil {
-		_ = e.db.UpdateDeploymentStatus(id, "error")
-		return d, fmt.Errorf("pull images: %w", err)
+	if err := stepRun(ctx, run, "pull_images", "Pull container images", func(step *operations.Step) error {
+		if stepErr := e.composePull(ctx, composeDir, stepWriter(step)); stepErr != nil {
+			return fmt.Errorf("pull images: %w", stepErr)
+		}
+		return nil
+	}); err != nil {
+		return d, err
 	}
 
-	// Start services
-	if err := e.composeUp(ctx, composeDir); err != nil {
-		_ = e.db.UpdateDeploymentStatus(id, "error")
-		return d, fmt.Errorf("start services: %w", err)
+	if err := stepRun(ctx, run, "start_services", "Start compose services", func(step *operations.Step) error {
+		if stepErr := e.composeUp(ctx, composeDir, stepWriter(step)); stepErr != nil {
+			return fmt.Errorf("start services: %w", stepErr)
+		}
+		return nil
+	}); err != nil {
+		return d, err
 	}
 
-	_ = e.db.UpdateDeploymentStatus(id, "running")
+	if err := e.db.UpdateDeploymentStatus(id, "running"); err != nil {
+		return d, err
+	}
 	d.Status = "running"
 
-	// Configure reverse proxy if domain is set
 	if req.Domain != "" {
-		siteName := req.Name + ".conf"
-		logger.Infof("Configuring reverse proxy route for domain '%s' targeting port '%d'...", req.Domain, proxyTargetPort(tmpl))
-		if err := e.nginx.ConfigureSiteForDeployment(siteName, req.Domain, proxyTargetPort(tmpl), "", req.Name); err != nil {
-			// Non-fatal: deployment is running, nginx config failed.
-			logger.Errorf("failed to configure nginx proxy: %v", err)
-			fmt.Printf("warning: nginx site configuration failed: %v\n", err)
-		} else if err := e.nginx.ObtainCertificate(req.Domain); err != nil {
-			// Non-fatal: DNS may not have propagated or certbot may not be installed.
-			logger.Errorf("failed to obtain Let's Encrypt SSL certificate for %s: %v", req.Domain, err)
-			fmt.Printf("warning: let's encrypt certificate setup failed: %v\n", err)
+		if err := stepRun(ctx, run, "configure_proxy", "Configure nginx site", func(step *operations.Step) error {
+			siteName := req.Name + ".conf"
+			logger.Infof("Configuring reverse proxy route for domain '%s' targeting port '%d'...", req.Domain, proxyTargetPort(tmpl))
+			if stepErr := e.nginx.ConfigureSiteForDeployment(siteName, req.Domain, proxyTargetPort(tmpl), "", req.Name); stepErr != nil {
+				return fmt.Errorf("configure nginx site: %w", stepErr)
+			}
+			siteConfigured = true
+			if stepErr := e.nginx.ObtainCertificate(req.Domain); stepErr != nil {
+				step.Logf("certificate setup warning: %v", stepErr)
+			}
+			return nil
+		}); err != nil {
+			return d, err
 		}
 	}
 
+	if run != nil {
+		run.SetSummary(fmt.Sprintf("Deployment %s is running", d.Name))
+	}
 	return d, nil
 }
 
@@ -163,101 +250,194 @@ func proxyTargetPort(tmpl *registry.AppTemplate) int {
 
 // Stop stops a running deployment.
 func (e *Engine) Stop(ctx context.Context, id string) error {
+	return e.StopWithRun(ctx, id, nil)
+}
+
+func (e *Engine) StopWithRun(ctx context.Context, id string, run *operations.Run) error {
 	logger.Infof("Stopping deployment ID '%s'...", id)
 	d, err := e.db.GetDeployment(id)
 	if err != nil || d == nil {
 		logger.Errorf("Stop failed: deployment not found for ID: %s", id)
 		return fmt.Errorf("deployment not found: %s", id)
 	}
-	if err := e.composeStop(ctx, d.ComposeDir); err != nil {
-		logger.Errorf("Stop failed to halt docker compose services: %v", err)
+	if run != nil {
+		run.BindResource("deployment", d.ID, d.Name)
+	}
+	if err := stepRun(ctx, run, "stop_services", "Stop compose services", func(step *operations.Step) error {
+		if stepErr := e.composeStop(ctx, d.ComposeDir, stepWriter(step)); stepErr != nil {
+			logger.Errorf("Stop failed to halt docker compose services: %v", stepErr)
+			return stepErr
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	logger.Infof("Successfully stopped deployment ID '%s'", id)
+	if run != nil {
+		run.SetSummary(fmt.Sprintf("Deployment %s stopped", d.Name))
+	}
 	return e.db.UpdateDeploymentStatus(id, "stopped")
 }
 
 // Start starts a stopped deployment.
 func (e *Engine) Start(ctx context.Context, id string) error {
+	return e.StartWithRun(ctx, id, nil)
+}
+
+func (e *Engine) StartWithRun(ctx context.Context, id string, run *operations.Run) error {
 	logger.Infof("Starting deployment ID '%s'...", id)
 	d, err := e.db.GetDeployment(id)
 	if err != nil || d == nil {
 		logger.Errorf("Start failed: deployment not found for ID: %s", id)
 		return fmt.Errorf("deployment not found: %s", id)
 	}
-	if err := e.composeUp(ctx, d.ComposeDir); err != nil {
-		logger.Errorf("Start failed to bring compose services up: %v", err)
-		_ = e.db.UpdateDeploymentStatus(id, "error")
+	if run != nil {
+		run.BindResource("deployment", d.ID, d.Name)
+	}
+	if err := stepRun(ctx, run, "start_services", "Start compose services", func(step *operations.Step) error {
+		if stepErr := e.composeUp(ctx, d.ComposeDir, stepWriter(step)); stepErr != nil {
+			logger.Errorf("Start failed to bring compose services up: %v", stepErr)
+			_ = e.db.UpdateDeploymentStatus(id, "error")
+			return stepErr
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	logger.Infof("Successfully started deployment ID '%s'", id)
+	if run != nil {
+		run.SetSummary(fmt.Sprintf("Deployment %s started", d.Name))
+	}
 	return e.db.UpdateDeploymentStatus(id, "running")
 }
 
 // Restart restarts a deployment.
 func (e *Engine) Restart(ctx context.Context, id string) error {
+	return e.RestartWithRun(ctx, id, nil)
+}
+
+func (e *Engine) RestartWithRun(ctx context.Context, id string, run *operations.Run) error {
 	logger.Infof("Restarting deployment ID '%s'...", id)
 	d, err := e.db.GetDeployment(id)
 	if err != nil || d == nil {
 		logger.Errorf("Restart failed: deployment not found for ID: %s", id)
 		return fmt.Errorf("deployment not found: %s", id)
 	}
-	if err := e.composeRestart(ctx, d.ComposeDir); err != nil {
-		logger.Errorf("Restart failed: %v", err)
+	if run != nil {
+		run.BindResource("deployment", d.ID, d.Name)
+	}
+	if err := stepRun(ctx, run, "restart_services", "Restart compose services", func(step *operations.Step) error {
+		if stepErr := e.composeRestart(ctx, d.ComposeDir, stepWriter(step)); stepErr != nil {
+			logger.Errorf("Restart failed: %v", stepErr)
+			return stepErr
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	logger.Infof("Successfully restarted deployment ID '%s'", id)
+	if run != nil {
+		run.SetSummary(fmt.Sprintf("Deployment %s restarted", d.Name))
+	}
 	return e.db.UpdateDeploymentStatus(id, "running")
 }
 
 // Update pulls new images and recreates containers.
 func (e *Engine) Update(ctx context.Context, id string) error {
+	return e.UpdateWithRun(ctx, id, nil)
+}
+
+func (e *Engine) UpdateWithRun(ctx context.Context, id string, run *operations.Run) error {
 	logger.Infof("Initiating image pull and update for deployment ID '%s'...", id)
 	d, err := e.db.GetDeployment(id)
 	if err != nil || d == nil {
 		logger.Errorf("Update failed: deployment not found for ID: %s", id)
 		return fmt.Errorf("deployment not found: %s", id)
 	}
+	if run != nil {
+		run.BindResource("deployment", d.ID, d.Name)
+	}
 	_ = e.db.UpdateDeploymentStatus(id, "updating")
 
-	if err := e.composePull(ctx, d.ComposeDir); err != nil {
-		logger.Errorf("Update failed during compose pull phase: %v", err)
-		_ = e.db.UpdateDeploymentStatus(id, "error")
-		return fmt.Errorf("pull: %w", err)
+	if err := stepRun(ctx, run, "pull_images", "Pull updated images", func(step *operations.Step) error {
+		if stepErr := e.composePull(ctx, d.ComposeDir, stepWriter(step)); stepErr != nil {
+			logger.Errorf("Update failed during compose pull phase: %v", stepErr)
+			_ = e.db.UpdateDeploymentStatus(id, "error")
+			return fmt.Errorf("pull: %w", stepErr)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
-	if err := e.composeUp(ctx, d.ComposeDir); err != nil {
-		logger.Errorf("Update failed during compose up phase: %v", err)
-		_ = e.db.UpdateDeploymentStatus(id, "error")
-		return fmt.Errorf("up: %w", err)
+	if err := stepRun(ctx, run, "recreate_services", "Recreate compose services", func(step *operations.Step) error {
+		if stepErr := e.composeUp(ctx, d.ComposeDir, stepWriter(step)); stepErr != nil {
+			logger.Errorf("Update failed during compose up phase: %v", stepErr)
+			_ = e.db.UpdateDeploymentStatus(id, "error")
+			return fmt.Errorf("up: %w", stepErr)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	logger.Infof("Successfully completed update for deployment ID '%s'", id)
+	if run != nil {
+		run.SetSummary(fmt.Sprintf("Deployment %s updated", d.Name))
+	}
 	return e.db.UpdateDeploymentStatus(id, "running")
 }
 
 // Remove stops and removes a deployment entirely.
 func (e *Engine) Remove(ctx context.Context, id string) error {
+	return e.RemoveWithRun(ctx, id, nil)
+}
+
+func (e *Engine) RemoveWithRun(ctx context.Context, id string, run *operations.Run) error {
 	logger.Infof("Removing deployment ID '%s' entirely...", id)
 	d, err := e.db.GetDeployment(id)
 	if err != nil || d == nil {
 		logger.Errorf("Remove failed: deployment not found for ID: %s", id)
 		return fmt.Errorf("deployment not found: %s", id)
 	}
-
-	// Remove proxy route
-	if d.Domain != "" {
-		logger.Infof("Removing proxy route for domain: %s", d.Domain)
-		_ = e.proxy.RemoveRoute(d.Domain)
+	if run != nil {
+		run.BindResource("deployment", d.ID, d.Name)
 	}
 
-	// Bring down containers and volumes
-	logger.Infof("Stopping and tearing down docker containers and volumes in: %s", d.ComposeDir)
-	_ = e.composeDown(ctx, d.ComposeDir)
+	if d.Domain != "" {
+		if err := stepRun(ctx, run, "remove_proxy", "Remove nginx site", func(step *operations.Step) error {
+			logger.Infof("Removing proxy route for domain: %s", d.Domain)
+			if stepErr := e.removeDeploymentSite(d.Name+".conf", d.Domain); stepErr != nil {
+				step.Logf("remove nginx site warning: %v", stepErr)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
 
-	// Remove compose directory
-	logger.Infof("Removing compose directory from filesystem: %s", d.ComposeDir)
-	_ = os.RemoveAll(d.ComposeDir)
+	if err := stepRun(ctx, run, "remove_services", "Remove compose services and volumes", func(step *operations.Step) error {
+		logger.Infof("Stopping and tearing down docker containers and volumes in: %s", d.ComposeDir)
+		if stepErr := e.composeDown(ctx, d.ComposeDir, stepWriter(step)); stepErr != nil {
+			step.Logf("docker compose down warning: %v", stepErr)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if err := stepRun(ctx, run, "delete_bundle", "Delete deployment bundle", func(_ *operations.Step) error {
+		logger.Infof("Removing compose directory from filesystem: %s", d.ComposeDir)
+		if stepErr := os.RemoveAll(d.ComposeDir); stepErr != nil {
+			return stepErr
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 
 	logger.Infof("Successfully removed deployment ID '%s' from store", id)
+	if run != nil {
+		run.SetSummary(fmt.Sprintf("Deployment %s removed", d.Name))
+	}
 	return e.db.DeleteDeployment(id)
 }
 
@@ -351,32 +531,37 @@ func (e *Engine) SyncStatus(ctx context.Context, id string) error {
 
 // --- compose helpers ---
 
-func (e *Engine) composePull(ctx context.Context, dir string) error {
-	return e.runCompose(ctx, dir, "pull")
+func (e *Engine) composePull(ctx context.Context, dir string, output io.Writer) error {
+	return e.runCompose(ctx, dir, output, "pull")
 }
 
-func (e *Engine) composeUp(ctx context.Context, dir string) error {
-	return e.runCompose(ctx, dir, "up", "-d", "--remove-orphans")
+func (e *Engine) composeUp(ctx context.Context, dir string, output io.Writer) error {
+	return e.runCompose(ctx, dir, output, "up", "-d", "--remove-orphans")
 }
 
-func (e *Engine) composeStop(ctx context.Context, dir string) error {
-	return e.runCompose(ctx, dir, "stop")
+func (e *Engine) composeStop(ctx context.Context, dir string, output io.Writer) error {
+	return e.runCompose(ctx, dir, output, "stop")
 }
 
-func (e *Engine) composeRestart(ctx context.Context, dir string) error {
-	return e.runCompose(ctx, dir, "restart")
+func (e *Engine) composeRestart(ctx context.Context, dir string, output io.Writer) error {
+	return e.runCompose(ctx, dir, output, "restart")
 }
 
-func (e *Engine) composeDown(ctx context.Context, dir string) error {
-	return e.runCompose(ctx, dir, "down", "-v")
+func (e *Engine) composeDown(ctx context.Context, dir string, output io.Writer) error {
+	return e.runCompose(ctx, dir, output, "down", "-v")
 }
 
-func (e *Engine) runCompose(ctx context.Context, dir string, args ...string) error {
+func (e *Engine) runCompose(ctx context.Context, dir string, output io.Writer, args ...string) error {
 	fullArgs := append([]string{"compose"}, args...)
 	cmd := exec.CommandContext(ctx, "docker", fullArgs...)
 	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	if output != nil {
+		cmd.Stdout = output
+		cmd.Stderr = output
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 	logger.Debugf("Executing command: docker compose %s (working directory: %s)", strings.Join(args, " "), dir)
 	return cmd.Run()
 }
@@ -566,4 +751,42 @@ func (e *Engine) PeriodicSync(ctx context.Context, interval time.Duration) {
 			}
 		}
 	}
+}
+
+func stepRun(ctx context.Context, run *operations.Run, key, title string, fn func(*operations.Step) error) error {
+	if run == nil {
+		return fn(nil)
+	}
+	return run.Step(ctx, key, title, func(stepCtx context.Context, step *operations.Step) error {
+		_ = stepCtx
+		return fn(step)
+	})
+}
+
+func stepWriter(step *operations.Step) io.Writer {
+	if step == nil {
+		return nil
+	}
+	return step.Writer()
+}
+
+func (e *Engine) removeDeploymentSite(siteName, domain string) error {
+	if siteName == "" {
+		return nil
+	}
+	if err := e.nginx.DisableSite(siteName); err != nil {
+		logger.Debugf("disable nginx site %s returned: %v", siteName, err)
+	}
+	if err := e.nginx.DeleteSite(siteName); err != nil {
+		return err
+	}
+	if domain != "" {
+		if out, ok := e.nginx.TestConfig(); !ok {
+			return fmt.Errorf("nginx config test failed after deleting site: %s", strings.TrimSpace(out))
+		}
+	}
+	if err := e.nginx.Reload(); err != nil {
+		return err
+	}
+	return nil
 }

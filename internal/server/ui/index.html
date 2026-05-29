@@ -1,0 +1,2192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vessel</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080a0f;--surface:#0f1117;--surface2:#161b27;--surface3:#1e2438;
+  --border:#1e2438;--border2:#2a3050;
+  --text:#e2e8f0;--muted:#64748b;--muted2:#94a3b8;
+  --accent:#6366f1;--accent2:#818cf8;--accent-dim:#6366f120;
+  --green:#22c55e;--green-dim:#22c55e18;
+  --red:#ef4444;--red-dim:#ef444418;
+  --yellow:#f59e0b;--yellow-dim:#f59e0b18;
+  --blue:#3b82f6;--blue-dim:#3b82f618;
+  --purple:#a855f7;--purple-dim:#a855f718;
+  --r:8px;--r2:12px;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'SF Mono','Fira Code','Cascadia Code',monospace;
+  --sidebar:220px;
+}
+html[data-theme="light"]{
+  --bg:#f1f5f9;--surface:#ffffff;--surface2:#f8fafc;--surface3:#e2e8f0;
+  --border:#e2e8f0;--border2:#cbd5e1;
+  --text:#0f172a;--muted:#64748b;--muted2:#475569;
+  --accent:#6366f1;--accent2:#4f46e5;--accent-dim:#6366f115;
+  --green:#16a34a;--green-dim:#16a34a15;
+  --red:#dc2626;--red-dim:#dc262615;
+  --yellow:#d97706;--yellow-dim:#d9770615;
+  --blue:#2563eb;--blue-dim:#2563eb15;
+  --purple:#9333ea;--purple-dim:#9333ea15;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.5}
+a{color:var(--accent);text-decoration:none}a:hover{color:var(--accent2)}
+button{cursor:pointer;font-family:var(--font);font-size:13px;border:none;border-radius:var(--r);padding:7px 14px;transition:all .15s;font-weight:500;white-space:nowrap}
+.btn{background:var(--surface2);color:var(--muted2);border:1px solid var(--border2)}.btn:hover{color:var(--text);border-color:var(--muted)}
+.btn-primary{background:var(--accent);color:#fff;border:1px solid transparent}.btn-primary:hover{background:var(--accent2)}
+.btn-success{background:#16a34a;color:#fff;border:1px solid transparent}.btn-success:hover{background:#15803d}
+.btn-danger{background:transparent;color:var(--red);border:1px solid #ef444430}.btn-danger:hover{background:var(--red-dim)}
+.btn-sm{padding:4px 10px;font-size:12px}.btn-xs{padding:3px 8px;font-size:11px}
+input,select,textarea{background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:13px;padding:8px 12px;width:100%;outline:none;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.fg{margin-bottom:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:20px}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em}
+.tag-running,.tag-active{background:var(--green-dim);color:var(--green)}
+.tag-stopped,.tag-exited,.tag-inactive{background:var(--surface3);color:var(--muted)}
+.tag-error{background:var(--red-dim);color:var(--red)}
+.tag-deploying,.tag-updating{background:var(--yellow-dim);color:var(--yellow)}
+.tag-imported{background:var(--blue-dim);color:var(--blue)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;flex-shrink:0}
+.pulse{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.editor{font-family:var(--mono);font-size:12px;line-height:1.6;background:#0d1117;border:1px solid var(--border2);border-radius:var(--r);color:#c9d1d9;padding:16px;width:100%;resize:vertical;min-height:300px}
+.editor:focus{border-color:var(--accent);outline:none}
+html[data-theme="light"] .editor{background:#f8fafc;color:var(--text)}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:24px}
+.tab{padding:9px 18px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
+.tab:hover{color:var(--text)}.tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:18px 20px}
+.stat-val{font-size:28px;font-weight:700;letter-spacing:-.5px;line-height:1}
+.stat-lbl{font-size:11px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.stat-sub{font-size:12px;color:var(--muted2);margin-top:4px}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px}
+.bar-track{flex:1;height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width .4s}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;padding:8px 12px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+.tbl td{padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted2)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--surface2);color:var(--text)}
+.hub-result{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;transition:background .12s;border-bottom:1px solid var(--border)}
+.hub-result:hover{background:var(--surface2)}
+.hub-result:last-child{border-bottom:none}
+.img-avatar{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;color:#fff}
+</style>
+</head>
+<body>
+<div id="app" style="display:flex;height:100vh;overflow:hidden"></div>
+<script>
+// ── Inline SVG icons (Lucide subset, no CDN needed) ──────────────────────────
+const ICONS={
+  anchor:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="22"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>',
+  'layout-dashboard':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
+  server:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>',
+  rocket:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
+  settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
+  'file-code':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="m10 13-2 2 2 2"/><path d="m14 17 2-2-2-2"/></svg>',
+  github:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  'refresh-cw':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+  box:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
+  play:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+  'bar-chart-2':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+  'check-circle':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+  'alert-triangle':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  'x-circle':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+  loader:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>',
+  layers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+  'chevron-right':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
+  'chevron-down':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+  'external-link':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
+  trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  'file-text':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
+  cpu:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>',
+  globe:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+  sun:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>',
+  moon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+};
+function ico(name,size,color){
+  size=size||16;
+  const svg=ICONS[name]||ICONS.box;
+  return svg.replace('<svg ','<svg width="'+size+'" height="'+size+'" style="flex-shrink:0'+(color?';color:'+color:'')+'" ');
+}
+// ── Theme (light / dark) ──────────────────────────────────────────────────────
+function applyTheme(t){
+  document.documentElement.setAttribute('data-theme',t);
+  localStorage.setItem('vessel-theme',t);
+}
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme')||'dark';
+  applyTheme(cur==='dark'?'light':'dark');
+  render();
+}
+(function initTheme(){
+  const saved=localStorage.getItem('vessel-theme');
+  if(saved){applyTheme(saved);return;}
+  const prefersDark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(prefersDark?'dark':'light');
+})();
+// ── Image avatar: Docker Hub logo with colored-initials fallback ──────────────
+const HUB_COLORS=['#6366f1','#3b82f6','#22c55e','#f59e0b','#ef4444','#a855f7','#06b6d4','#ec4899'];
+function strColor(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))&0xffffffff;return HUB_COLORS[Math.abs(h)%HUB_COLORS.length]}
+function initials(s){const p=s.replace(/:.*/,'').split('/');const n=p[p.length-1];return n.slice(0,2).toUpperCase()}
+// Returns an <img> that falls back to a colored initials div
+function imgAvatar(image,size){
+  size=size||36;
+  if(!image)return'<div class="img-avatar" style="width:'+size+'px;height:'+size+'px;background:var(--surface3);font-size:'+(size*0.38|0)+'px">?</div>';
+  const clean=image.split(':')[0];
+  const parts=clean.split('/');
+  let ns,repo;
+  if(parts.length===1){ns='library';repo=parts[0]}
+  else{ns=parts[0];repo=parts.slice(1).join('/')}
+  const logoUrl='https://hub.docker.com/v2/repositories/'+ns+'/'+repo+'/';
+  const bg=strColor(clean);
+  const init=initials(clean);
+  const id='av-'+clean.replace(/[^a-z0-9]/g,'_')+'_'+size;
+  // We fetch the repo metadata to get logo_url; meanwhile show initials
+  setTimeout(()=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    fetch(logoUrl).then(r=>r.json()).then(d=>{
+      const logo=d.logo_url&&d.logo_url.large?d.logo_url.large:(d.logo_url&&d.logo_url.small?d.logo_url.small:'');
+      if(logo&&el){
+        el.outerHTML='<img src="'+logo+'" width="'+size+'" height="'+size+'" style="border-radius:8px;object-fit:contain;background:var(--surface2)" onerror="this.style.display=\'none\'">';
+      }
+    }).catch(()=>{});
+  },0);
+  return'<div id="'+id+'" class="img-avatar" style="width:'+size+'px;height:'+size+'px;background:'+bg+';font-size:'+(size*0.38|0)+'px;border-radius:8px">'+init+'</div>';
+}
+
+const API='/api/v1';
+let S={
+  authReady:false,configured:false,authenticated:false,authMode:'login',currentUser:null,users:[],
+  page:'containers',nginxTab:'overview',deployTab:'templates',selectedApp:null,selectedDeployment:null,composeId:null,composeDetail:null,
+  deployments:[],apps:[],containers:[],composeStacks:[],
+  operations:[],selectedOperationId:null,selectedOperation:null,activeOperationId:null,
+  nginxStatus:null,nginxSites:[],nginxMainConfig:'',nginxLogs:[],nginxStats:null,
+  editingSite:null,editingContent:'',newSiteMode:false,
+  logs:'',logsTarget:null,logsEs:null,
+  deploying:false,error:null,loading:false,
+  templateSkipServices:{},templateEnvDraft:{},
+  updating:false,updateLog:null,
+  hubQuery:'',hubResults:[],hubSearching:false,hubSelected:null,
+  customPorts:[{internal:'',external:'',protocol:'tcp'}],
+  customVolumes:[{name:'',mount:''}],
+  serverVersion:'',
+  // Compose stack builder state
+  csName:'',csDomain:'',csPrimaryImage:'',csPrimaryName:'',
+  csPrimaryPorts:[{internal:'',external:'',protocol:'tcp'}],
+  csPrimaryVolumes:[{name:'',mount:''}],
+  csPrimaryEnv:'',
+  csSidecars:[],  // [{name,image,env,volumes:[{name,mount}],healthTest,ports:[{internal,external,protocol}]}]
+  // Auto-refresh
+  autoRefreshTimer:null,
+  autoRefreshEnabled:false,
+  // DNS guidance
+  systemIP:null,  // string | null, fetched once on demand
+  dnsCheck:null,
+  dnsChecking:false,
+  // Deploy wizard
+  deployStep:1,
+  deployWizardApp:null,
+  deployWizardEnv:{},
+  deployWizardName:'',
+  deployWizardDomain:'',
+  deployWizardSkip:[],
+  wizardSearchQuery:'',
+};
+function set(p){Object.assign(S,p);render()}
+function resetSessionViews(){
+  if(S.logsEs){S.logsEs.close();S.logsEs=null}
+  stopAutoRefresh();
+  Object.assign(S,{
+    page:'containers',nginxTab:'overview',deployTab:'templates',
+    selectedApp:null,selectedDeployment:null,composeId:null,composeDetail:null,
+    operations:[],selectedOperationId:null,selectedOperation:null,activeOperationId:null,
+    nginxStatus:null,nginxSites:[],nginxMainConfig:'',nginxLogs:[],nginxStats:null,
+    editingSite:null,editingContent:'',newSiteMode:false,
+    logs:'',logsTarget:null,
+    users:[],
+    deployments:[],apps:[],containers:[],composeStacks:[],
+    deploying:false,error:null,loading:false,
+  });
+}
+function normalizePage(page){
+  if(page==='operations'&&!canOperator())return'containers';
+  if((page==='nginx'||page==='settings')&&!canAdmin())return'containers';
+  return page;
+}
+async function api(method,path,body){
+  const o={method,headers:{'Content-Type':'application/json'},credentials:'same-origin'};
+  if(body)o.body=JSON.stringify(body);
+  const r=await fetch(API+path,o);
+  const d=await r.json().catch(()=>({}));
+  if(r.status===401){
+    resetSessionViews();
+    set({authenticated:false,authMode:'login',currentUser:null,error:d.error||'authentication required'});
+    throw new Error(d.error||'authentication required');
+  }
+  if(!r.ok)throw new Error(d.error||'Request failed');
+  return d;
+}
+async function boot(){
+  try{
+    const r=await fetch(API+'/setup',{credentials:'same-origin'});
+    const d=await r.json();
+    if(!d.configured){resetSessionViews();set({authReady:true,configured:false,authenticated:false,authMode:'setup',currentUser:null});return}
+    const meRes=await fetch(API+'/me',{credentials:'same-origin'});
+    if(!meRes.ok){resetSessionViews();set({authReady:true,configured:true,authenticated:false,authMode:'login',currentUser:null});return}
+    const meData=await meRes.json();
+    resetSessionViews();
+    S.configured=true;S.authReady=true;S.authenticated=true;S.currentUser=meData.user;S.serverVersion=meData.version||'';S.page=normalizePage(S.page);render();
+    await load();
+    // Restore auto-refresh preference from localStorage for the initial Apps page.
+    if(localStorage.getItem('vessel-autorefresh')==='1'){
+      S.autoRefreshEnabled=true;
+      S.autoRefreshTimer=setInterval(load,5000);
+    }
+  }catch(e){resetSessionViews();set({authReady:true,configured:true,authenticated:false,authMode:'login',currentUser:null,error:e.message})}
+}
+async function authSubmit(e){
+  e.preventDefault();
+  const username=e.target.username?e.target.username.value:'admin';
+  const password=e.target.password.value;
+  const path=S.authMode==='setup'?'/setup':'/login';
+  try{
+    const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({username,password})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'Authentication failed');
+    resetSessionViews();
+    set({configured:true,authenticated:true,currentUser:d.user,error:null});
+    await load();
+  }catch(err){set({error:err.message})}
+}
+async function logout(){
+  try{await api('POST','/logout')}catch(e){}
+  resetSessionViews();
+  set({authenticated:false,authMode:'login',deploying:false,currentUser:null,users:[]});
+}
+async function loadUsers(){
+  if(!canAdmin())return;
+  try{const d=await api('GET','/users');set({users:d.users||[]})}catch(e){set({error:e.message})}
+}
+async function load(){
+  const showLoading=!S.containers.length&&!S.deployments.length;
+  if(showLoading){S.loading=true;render();}
+  try{
+    const requests=[api('GET','/docker/containers'),api('GET','/deployments'),api('GET','/apps')];
+    if(canOperator())requests.push(api('GET','/operations?limit=30'));
+    const results=await Promise.all(requests);
+    const dc=results[0],dd=results[1],aa=results[2],oo=results[3];
+    const next={containers:dc.containers||[],deployments:dd.deployments||[],apps:aa.apps||[],loading:false,selectedOperation:null};
+    if(oo){
+      next.operations=oo.operations||[];
+    }else{
+      next.operations=[];
+      next.selectedOperationId=null;
+      next.selectedOperation=null;
+      next.activeOperationId=null;
+    }
+    if(!canAdmin()){
+      next.nginxStatus=null;
+      next.nginxSites=[];
+      next.nginxMainConfig='';
+      next.nginxLogs=[];
+      next.nginxStats=null;
+      next.editingSite=null;
+      next.editingContent='';
+      next.newSiteMode=false;
+    }
+    if(S.selectedOperationId){
+      const selected=(next.operations||[]).find(op=>op.id===S.selectedOperationId);
+      if(selected)next.selectedOperation=selected;
+    }
+    next.page=normalizePage(S.page);
+    set(next);
+  }catch(e){set({error:e.message,loading:false})}
+}
+async function loadOperations(selectId){
+  try{
+    const d=await api('GET','/operations?limit=60');
+    const ops=d.operations||[];
+    const next={operations:ops};
+    if(selectId)next.selectedOperationId=selectId;
+    const chosenId=selectId||S.selectedOperationId;
+    if(chosenId){
+      const selected=ops.find(op=>op.id===chosenId);
+      if(selected)next.selectedOperation=selected;
+    }
+    set(next);
+    if(selectId)await loadOperation(selectId,true);
+  }catch(e){set({error:e.message})}
+}
+async function loadOperation(id,quiet){
+  try{
+    const d=await api('GET','/operations/'+id);
+    const op=d.operation||null;
+    if(!quiet)set({selectedOperationId:id,selectedOperation:op});
+    else{
+      S.selectedOperationId=id;
+      S.selectedOperation=op;
+      render();
+    }
+    return op;
+  }catch(e){
+    if(!quiet)set({error:e.message});
+    throw e;
+  }
+}
+function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+async function runTracked(method,path,body,opts){
+  opts=opts||{};
+  const res=await api(method,path,body);
+  const op=res&&res.operation?res.operation:null;
+  if(!op)return res;
+  set({
+    page:'operations',
+    activeOperationId:op.id,
+    selectedOperationId:op.id,
+    selectedOperation:op,
+  });
+  await loadOperations(op.id);
+  let finalOp=op;
+  for(let i=0;i<900;i++){
+    finalOp=await loadOperation(op.id,true);
+    if(finalOp&&(finalOp.status==='succeeded'||finalOp.status==='failed'))break;
+    await sleep(1250);
+  }
+  await load();
+  await loadOperations(op.id);
+  if(finalOp&&finalOp.status==='succeeded'){
+    const nextState={activeOperationId:null};
+    if(Object.prototype.hasOwnProperty.call(opts,'deploying'))nextState.deploying=opts.deploying;
+    if(opts.navigateTo)nextState.page=opts.navigateTo;
+    if(opts.resetState)Object.assign(nextState,opts.resetState);
+    set(nextState);
+    return finalOp;
+  }
+  set({activeOperationId:null});
+  throw new Error(finalOp&&finalOp.error?finalOp.error:(finalOp&&finalOp.summary?finalOp.summary:'Operation failed'));
+}
+async function loadApps(){try{const d=await api('GET','/apps');set({apps:d.apps||[]})}catch(e){set({error:e.message})}}
+async function loadNginx(){
+  const showLoading=!S.nginxStatus;
+  if(showLoading){S.loading=true;render();}
+  try{
+    const[st,si,stats]=await Promise.all([api('GET','/nginx/status'),api('GET','/nginx/sites'),api('GET','/nginx/stats')]);
+    set({nginxStatus:st,nginxSites:si.sites||[],nginxStats:stats,loading:false});
+  }catch(e){set({error:'nginx: '+e.message,loading:false})}
+}
+async function loadNginxConfig(){try{const d=await api('GET','/nginx/config');set({nginxMainConfig:d.content})}catch(e){set({error:e.message})}}
+async function loadNginxLogs(t){try{const d=await api('GET','/nginx/logs/'+t);set({nginxLogs:d.lines||[]})}catch(e){set({error:e.message})}}
+async function loadComposeDetail(id){
+  try{const d=await api('GET','/deployments/'+id+'/compose');set({composeDetail:d,composeId:id})}
+  catch(e){set({error:e.message})}
+}
+function copyYaml(){
+  const el=document.getElementById('compose-yaml-pre');
+  if(!el)return;
+  navigator.clipboard.writeText(el.textContent).then(()=>{
+    const btn=event.target.closest('button');
+    if(btn){const orig=btn.innerHTML;btn.innerHTML=ico('check-circle',11)+' Copied';setTimeout(()=>{btn.innerHTML=orig},1500);}
+  }).catch(()=>{});
+}
+async function removeExternalStack(name){
+  if(!confirm('Remove stack "'+name+'"?\n\nThis will run docker compose down and stop/remove all its containers. This cannot be undone.'))return;
+  try{
+    await api('DELETE','/docker/compose/stacks/'+encodeURIComponent(name));
+    await loadComposeStacks();
+  }catch(e){set({error:e.message})}
+}
+async function loadComposeStacks(){
+  const showLoading=!S.composeStacks.length&&!S.deployments.length;
+  if(showLoading){S.loading=true;render();}
+  try{
+    const[dd,ds]=await Promise.all([api('GET','/deployments'),api('GET','/docker/compose/stacks')]);
+    set({deployments:dd.deployments||[],composeStacks:ds.stacks||[],loading:false});
+  }catch(e){set({error:e.message,loading:false})}
+}
+async function act(id,a){
+  if(a==='stop'&&!confirm('Stop this deployment?'))return;
+  if(a==='restart'&&!confirm('Restart this deployment?'))return;
+  try{await runTracked('POST','/deployments/'+id+'/'+a,null,{navigateTo:'containers'})}catch(e){set({error:e.message})}
+}
+async function actC(id,a,name){
+  if(a==='stop'&&!confirm('Stop "'+name+'"?'))return;
+  if(a==='restart'&&!confirm('Restart "'+name+'"?'))return;
+  try{await api('POST','/docker/containers/'+id+'/'+a);await load()}catch(e){set({error:e.message})}
+}
+async function monitor(id,name){try{await runTracked('POST','/docker/import',{container_id:id,name},{navigateTo:'containers'})}catch(e){set({error:e.message})}}
+async function remove(id,name){
+  if(!confirm('Remove "'+name+'"? Containers and volumes will be deleted.'))return;
+  try{await runTracked('DELETE','/deployments/'+id,null,{navigateTo:'containers'})}catch(e){set({error:e.message})}
+}
+async function deploy(e){
+  e.preventDefault();const f=e.target,env={};
+  [...f.elements].forEach(el=>{if(el.name&&el.name.startsWith('env_'))env[el.name.slice(4)]=el.value});
+  const skipServices=[...f.elements].filter(el=>el.name&&el.name.startsWith('skip_service_')&&el.checked).map(el=>el.value);
+  set({deploying:true,error:null});
+  try{
+    await runTracked('POST','/deployments',{app_id:f.app_id.value,name:f.dname.value,domain:f.domain.value,env,skip_services:skipServices},{navigateTo:'containers',deploying:false});
+  }catch(e){set({deploying:false,error:e.message})}
+}
+async function deployCustom(e){
+  e.preventDefault();const f=e.target,env={};
+  (f.cenv.value||'').trim().split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)env[l.slice(0,i).trim()]=l.slice(i+1).trim()});
+  const ports=S.customPorts.filter(p=>p.internal).map(p=>({internal:parseInt(p.internal),external:parseInt(p.external||p.internal),protocol:p.protocol||'tcp'}));
+  const volumes=S.customVolumes.filter(v=>v.mount).map(v=>({name:v.name||v.mount.replace(/\//g,'-').replace(/^-/,''),mount_path:v.mount}));
+  const image=S.hubSelected?S.hubSelected.slug:f.cimage.value.trim();
+  if(!image){set({error:'Image is required'});return}
+  const name=f.cname.value.trim();
+  if(!name){set({error:'Deployment name is required'});return}
+  const domain=f.cdomain.value.trim().toLowerCase();
+  if(domain){
+    const check=S.dnsCheck&&S.dnsCheck.domain===domain?S.dnsCheck:null;
+    if(!check||!check.resolved){set({error:'Custom domain DNS is not ready yet. Add the A record, then use Check DNS before deploying.'});return}
+  }
+  set({deploying:true,error:null});
+  try{
+    await runTracked('POST','/docker/deploy',{image,name,domain,ports,volumes,env},{
+      navigateTo:'containers',
+      deploying:false,
+      resetState:{hubSelected:null,hubResults:[],hubQuery:'',customPorts:[{internal:'',external:'',protocol:'tcp'}],customVolumes:[{name:'',mount:''}]}
+    });
+  }catch(e){set({deploying:false,error:e.message})}
+}
+let hubTimer=null;
+function hubSearch(q){
+  S.hubQuery=q;
+  // Update the query display without full re-render (avoids losing focus)
+  clearTimeout(hubTimer);
+  if(!q.trim()){
+    S.hubResults=[];S.hubSearching=false;
+    renderHubResults();
+    return;
+  }
+  S.hubSearching=true;
+  renderHubResults();
+  hubTimer=setTimeout(async()=>{
+    try{
+      const r=await fetch(API+'/docker/search?q='+encodeURIComponent(q));
+      const d=await r.json();
+      S.hubResults=d.results||[];
+      S.hubSearching=false;
+      renderHubResults();
+    }catch{S.hubSearching=false;renderHubResults()}
+  },500);
+}
+function renderHubResults(){
+  const el=document.getElementById('hub-results');
+  if(!el)return;
+  if(S.hubSearching){
+    el.innerHTML='<div style="padding:12px 16px;color:var(--muted);font-size:13px;display:flex;align-items:center;gap:8px">'+ico('loader',14)+'Searching Docker Hub…</div>';
+    return;
+  }
+  if(!S.hubResults.length){el.innerHTML='';return}
+  el.innerHTML=S.hubResults.map(r=>{
+    const logo=r.logo_url&&r.logo_url.large?r.logo_url.large:(r.logo_url&&r.logo_url.small?r.logo_url.small:'');
+    const item=JSON.stringify({slug:r.slug,name:r.name,description:r.short_description||'',logo}).replace(/"/g,'&quot;');
+    return'<div class="hub-result" onclick="selectHub('+item+')">'+
+      (logo?'<img src="'+logo+'" width="36" height="36" style="border-radius:8px;object-fit:contain;background:var(--surface2);flex-shrink:0" onerror="this.style.display=\'none\'">':
+        imgAvatar(r.slug,36))+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-weight:600;font-size:13px;font-family:var(--mono)">'+escHtml(r.slug)+'</div>'+
+        '<div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.short_description||'')+'</div>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">'+
+        (r.pull_count?fmtPulls(r.pull_count)+' pulls':'')+
+        (r.star_count?' · ★'+r.star_count:'')+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+function selectHub(item){
+  if(typeof item==='string')item=JSON.parse(item.replace(/&quot;/g,'"'));
+  S.hubSelected=item;S.hubResults=[];S.hubQuery=item.slug;
+  const inp=document.getElementById('cimage');if(inp)inp.value=item.slug;
+  const qinp=document.getElementById('hubsearch');if(qinp)qinp.value=item.slug;
+  renderHubResults();
+  // Update selected banner without full re-render
+  const banner=document.getElementById('hub-selected-banner');
+  if(banner){
+    const logo=item.logo?'<img src="'+item.logo+'" width="40" height="40" style="border-radius:8px;object-fit:contain;background:var(--surface2);flex-shrink:0">':imgAvatar(item.slug,40);
+    banner.style.display='flex';
+    banner.innerHTML=logo+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-weight:600;font-family:var(--mono);font-size:14px">'+escHtml(item.slug)+'</div>'+
+        '<div style="font-size:12px;color:var(--muted2)">'+escHtml(item.description||'')+'</div>'+
+      '</div>'+
+      '<a href="https://hub.docker.com/r/'+escHtml(item.slug)+'" target="_blank" class="btn btn-xs" style="display:flex;align-items:center;gap:4px">'+ico('external-link',11)+' Hub</a>'+
+      '<button class="btn btn-xs" onclick="clearHubSelection()">Change</button>';
+  }
+}
+function clearHubSelection(){
+  S.hubSelected=null;S.hubQuery='';
+  const inp=document.getElementById('cimage');if(inp)inp.value='';
+  const qinp=document.getElementById('hubsearch');if(qinp){qinp.value='';qinp.focus();}
+  const banner=document.getElementById('hub-selected-banner');if(banner)banner.style.display='none';
+  renderHubResults();
+}
+async function ngxAction(action){
+  try{
+    await runTracked('POST','/nginx/'+action,null,{navigateTo:'nginx'});
+    await loadNginx();
+  }catch(e){set({error:e.message})}
+}
+async function ngxTest(){try{const d=await api('GET','/nginx/test');alert(d.ok?'Config OK\n\n'+d.output:'Config Error\n\n'+d.output)}catch(e){set({error:e.message})}}
+async function ngxSaveMainConfig(){try{await api('PUT','/nginx/config',{content:S.nginxMainConfig});alert('Saved.')}catch(e){set({error:e.message})}}
+async function ngxEditSite(name){try{const d=await api('GET','/nginx/sites/'+name);set({editingSite:name,editingContent:d.content,newSiteMode:false})}catch(e){set({error:e.message})}}
+async function ngxSaveSite(){try{await api('PUT','/nginx/sites/'+S.editingSite,{content:S.editingContent});set({editingSite:null,editingContent:''});await loadNginx()}catch(e){set({error:e.message})}}
+async function ngxToggleSite(name,enabled){try{await api('POST','/nginx/sites/'+name+'/'+(enabled?'disable':'enable'));await loadNginx()}catch(e){set({error:e.message})}}
+async function ngxDeleteSite(name){if(!confirm('Delete site "'+name+'"?'))return;try{await api('DELETE','/nginx/sites/'+name);await loadNginx()}catch(e){set({error:e.message})}}
+async function ngxCreateSite(e){
+  e.preventDefault();const f=e.target;
+  try{await api('POST','/nginx/sites',{name:f.sitename.value,server_name:f.server_name.value,port:parseInt(f.port.value)||80,upstream:f.upstream.value});set({newSiteMode:false});await loadNginx()}catch(e){set({error:e.message})}
+}
+function openLogs(id,type,name){
+  if(S.logsEs)S.logsEs.close();
+  const path=type==='c'?'/docker/containers/'+id+'/logs':'/deployments/'+id+'/logs';
+  set({page:'logs',logsTarget:{id,name},logs:''});
+  const es=new EventSource(API+path);
+  es.onmessage=e=>{S.logs+=e.data+'\n';const el=document.getElementById('logbox');if(el){el.textContent=S.logs;el.scrollTop=el.scrollHeight}};
+  es.onerror=()=>es.close();S.logsEs=es;
+}
+function openNginxLogs(type){
+  if(S.logsEs)S.logsEs.close();
+  set({page:'logs',logsTarget:{id:type,name:'nginx '+type+' log'},logs:''});
+  const es=new EventSource(API+'/nginx/logs/'+type+'/stream');
+  es.onmessage=e=>{S.logs+=e.data+'\n';const el=document.getElementById('logbox');if(el){el.textContent=S.logs;el.scrollTop=el.scrollHeight}};
+  es.onerror=()=>es.close();S.logsEs=es;
+}
+function nav(p){
+  p=normalizePage(p);
+  if(S.logsEs&&p!=='logs'){S.logsEs.close();S.logsEs=null}
+  if(S.autoRefreshTimer)stopAutoRefresh();
+  set({page:p,error:null,editingSite:null,newSiteMode:false,composeDetail:null,composeId:null});
+  if(p==='containers')load();
+  if(p==='deploy')loadApps();
+  if(p==='settings')loadUsers();
+  if(p==='operations')loadOperations(S.selectedOperationId);
+  if(p==='nginx'){loadNginx();loadNginxConfig();}
+  if(p==='compose')loadComposeStacks();
+}
+function badge(s){return statusTag(s)}
+function fmtBytes(b){if(!b)return'0 B';if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';if(b<1073741824)return(b/1048576).toFixed(1)+' MB';return(b/1073741824).toFixed(2)+' GB'}
+function fmtPulls(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return n}
+function statusColor(code){const c=parseInt(code);if(c>=500)return'var(--red)';if(c>=400)return'var(--yellow)';if(c>=300)return'var(--blue)';return'var(--green)'}
+function escHtml(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function escAttr(s){return escHtml(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+// ── Shared UI helpers ─────────────────────────────────────────────────────────
+function emptyState(icon,message,actionLabel,actionFn){
+  return'<div style="text-align:center;padding:48px 24px;color:var(--muted)">'+
+    '<div style="margin-bottom:12px;opacity:.4">'+ico(icon,40)+'</div>'+
+    '<div style="font-size:14px;margin-bottom:16px">'+escHtml(message)+'</div>'+
+    (actionLabel
+      ?'<button class="btn btn-primary" onclick="'+actionFn+'">'+escHtml(actionLabel)+'</button>'
+      :'')+
+  '</div>';
+}
+function loadingSpinner(message){
+  return'<div style="display:flex;align-items:center;gap:10px;padding:24px;color:var(--muted)">'+
+    ico('loader',16)+' '+escHtml(message||'Loading\u2026')+
+  '</div>';
+}
+function errorBanner(msg){
+  if(!msg)return'';
+  return'<div style="background:var(--red-dim);border:1px solid var(--red);border-radius:var(--r);'+
+    'padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:13px">'+
+    ico('alert-triangle',14,'var(--red)')+
+    '<span style="flex:1;color:var(--red)">'+escHtml(msg)+'</span>'+
+    '<button class="btn btn-xs btn-danger" onclick="set({error:null})">Dismiss</button>'+
+  '</div>';
+}
+function statusTag(status){
+  const s=(status||'unknown').toLowerCase();
+  const cls=s==='running'   ?'tag-running'
+            :s==='stopped'  ?'tag-stopped'
+            :s==='error'    ?'tag-error'
+            :s==='deploying'?'tag-deploying'
+            :s==='updating' ?'tag-updating'
+            :s==='imported' ?'tag-imported'
+            :'tag-stopped';
+  return'<span class="tag '+cls+'"><span class="dot"></span>'+escHtml(s)+'</span>';
+}
+function operationStatusTag(status){
+  const s=(status||'queued').toLowerCase();
+  const cls=s==='succeeded'?'tag-running'
+            :s==='failed'?'tag-error'
+            :s==='running'?'tag-deploying'
+            :s==='queued'?'tag-stopped'
+            :'tag-stopped';
+  return'<span class="tag '+cls+'"><span class="dot"></span>'+escHtml(s)+'</span>';
+}
+function operationKindLabel(kind){
+  return escHtml(String(kind||'operation').replace(/_/g,' '));
+}
+// ── DNS guidance ──────────────────────────────────────────────────────────────
+async function ensureSystemIP(){
+  if(S.systemIP!==null)return;
+  try{const d=await api('GET','/system/ip');S.systemIP=d.ip||'';}catch{S.systemIP='';}
+}
+async function checkDNS(domain){
+  domain=(domain||'').trim().toLowerCase();
+  if(!domain)return;
+  S.dnsChecking=true;render();
+  try{
+    const d=await api('GET','/system/dns?domain='+encodeURIComponent(domain));
+    set({dnsCheck:d,dnsChecking:false});
+  }catch(e){
+    set({dnsCheck:{domain,ips:[],resolved:false,error:e.message},dnsChecking:false});
+  }
+}
+function dnsGuidanceBox(domain){
+  if(!domain)return'';
+  domain=(domain||'').trim().toLowerCase();
+  const ip=S.systemIP||'\u2026';
+  const check=S.dnsCheck&&S.dnsCheck.domain===domain?S.dnsCheck:null;
+  const ips=check&&check.ips&&check.ips.length?check.ips.join(', '):'';
+  const ready=check&&check.resolved;
+  const checked=!!check;
+  return'<div style="background:var(--blue-dim);border:1px solid var(--blue);border-radius:var(--r);padding:12px 14px;margin-top:8px;font-size:12px">'+
+    '<div style="font-weight:600;color:var(--blue);margin-bottom:8px">'+
+      ico('globe',13,'var(--blue)')+' DNS & SSL readiness'+
+    '</div>'+
+    '<div style="color:var(--muted2);margin-bottom:10px">Point this hostname at your Vessel server before deploying. Vessel will enable nginx and then request a Let&rsquo;s Encrypt certificate.</div>'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+      '<span style="color:var(--muted);width:82px">A record</span>'+
+      '<code style="background:var(--surface2);padding:3px 8px;border-radius:4px">'+escHtml(domain)+'</code>'+
+      '<span style="color:var(--muted)">to</span>'+
+      '<code style="flex:1;background:var(--surface2);padding:3px 8px;border-radius:4px">'+escHtml(ip)+'</code>'+
+      '<button class="btn btn-xs" onclick="copyVal(\''+escAttr(ip)+'\',this)">Copy</button>'+
+    '</div>'+
+    '<div style="display:flex;align-items:center;gap:8px">'+
+      '<span style="color:var(--muted);width:82px">Optional CNAME</span>'+
+      '<code style="background:var(--surface2);padding:3px 8px;border-radius:4px">www</code>'+
+      '<span style="color:var(--muted)">to</span>'+
+      '<code style="flex:1;background:var(--surface2);padding:3px 8px;border-radius:4px">'+escHtml(domain)+'</code>'+
+      '<button class="btn btn-xs" onclick="copyVal(\''+escAttr(domain)+'\',this)">Copy target</button>'+
+    '</div>'+
+    '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+      '<button type="button" class="btn btn-xs" onclick="checkDNS(\''+escAttr(domain)+'\')" title="Check public DNS for this hostname">'+(S.dnsChecking?ico('loader',11)+' Checking':'Check DNS')+'</button>'+
+      (checked?(ready?
+        '<span class="tag tag-running"><span class="dot"></span>DNS found</span><span style="color:var(--muted2)">A record resolves to '+escHtml(ips)+'</span>':
+        '<span class="tag tag-error"><span class="dot"></span>DNS not ready</span><span style="color:var(--muted2)">'+escHtml(check.error||'No A record found yet. Wait for propagation, then refresh the check.')+'</span>'):
+        '<span style="color:var(--muted2)">Run this check after adding the A record. Certificate issuance waits on DNS.</span>')+
+      (checked&&ready&&check.expected_ip&&!check.matches_expected?
+        '<span style="color:var(--yellow)">Detected server IP is '+escHtml(check.expected_ip)+'. If this is a private cloud IP, this warning is expected.</span>':'')+
+    '</div>'+
+  '</div>';
+}
+function copyVal(val,btn){
+  navigator.clipboard.writeText(val).then(()=>{
+    const orig=btn.innerHTML;
+    btn.innerHTML='Copied';
+    setTimeout(()=>{btn.innerHTML=orig;},1500);
+  }).catch(()=>{});
+}
+// ── Deploy wizard navigation ──────────────────────────────────────────────────
+function wizardSelectApp(id){
+  const app=S.apps.find(a=>a.id===id);
+  if(!app)return;
+  // Pre-populate env draft with defaults
+  const env={};
+  if(app.env_vars){app.env_vars.forEach(ev=>{env[ev.key]=ev.default||''});}
+  set({deployWizardApp:app,deployWizardEnv:env,deployStep:2});
+}
+function wizardNext(){
+  if(S.deployStep===2&&S.deployWizardDomain){
+    const d=S.deployWizardDomain.trim().toLowerCase();
+    const check=S.dnsCheck&&S.dnsCheck.domain===d?S.dnsCheck:null;
+    if(!check||!check.resolved){
+      set({error:'Custom domain DNS is not ready yet. Add the A record, then use Check DNS before continuing.'});
+      return;
+    }
+  }
+  if(S.deployStep<3)set({deployStep:S.deployStep+1});
+}
+function wizardBack(){
+  if(S.deployStep>1)set({deployStep:S.deployStep-1});
+}
+// ── Deploy wizard step 1: template selection grid ────────────────────────────
+function wizardTemplatesGrid(){
+  const apps = S.apps || [];
+  const q = (S.wizardSearchQuery || '').toLowerCase().trim();
+  const filtered = apps.filter(a => {
+    return (a.name || '').toLowerCase().includes(q) ||
+           (a.id || '').toLowerCase().includes(q) ||
+           (a.category || '').toLowerCase().includes(q) ||
+           (a.description || '').toLowerCase().includes(q);
+  });
+
+  if (!filtered.length) {
+    return '<div style="grid-column: 1/-1; text-align:center; padding: 40px; color: var(--muted)">No matching templates found</div>';
+  }
+
+  // Group apps by category for display
+  const categories = [...new Set(filtered.map(a => a.category || 'Other'))].sort();
+  let html = '';
+  
+  categories.forEach(cat => {
+    const catApps = filtered.filter(a => (a.category || 'Other') === cat);
+    html += '<div style="grid-column: 1/-1; margin-top: 14px; margin-bottom: 8px">'+
+      '<div style="font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em">'+escHtml(cat)+'</div>'+
+    '</div>';
+    
+    catApps.forEach(a => {
+      const desc = a.description || '';
+      html += '<div class="card" style="cursor:pointer; transition:all .15s; padding:10px 12px; display:flex; align-items:center; gap:8px" '+
+        'title="'+escAttr(desc)+'" '+
+        'onclick="wizardSelectApp(\''+escAttr(a.id)+'\')" '+
+        'onmouseenter="this.style.borderColor=\'var(--accent)\';this.style.background=\'var(--surface2)\'" '+
+        'onmouseleave="this.style.borderColor=\'\';this.style.background=\'\'">'+
+        imgAvatar(a.image, 28)+
+        '<div style="min-width:0; flex:1">'+
+          '<div style="font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">'+escHtml(a.name || a.id)+'</div>'+
+          '<div style="font-size: 9px; color: var(--accent2); margin-top: 1px">'+escHtml(a.category || '')+'</div>'+
+        '</div>'+
+      '</div>';
+    });
+  });
+  
+  return html;
+}
+
+function filterWizardTemplates(q) {
+  S.wizardSearchQuery = q;
+  const listEl = document.getElementById('wizard-templates-list');
+  if (listEl) {
+    listEl.innerHTML = wizardTemplatesGrid();
+  }
+}
+
+function wizardStep1(){
+  const apps = S.apps;
+  if(!apps || !apps.length){
+    return'<div style="text-align:center;padding:48px 24px;color:var(--muted)">'+
+      ico('loader', 16)+' Loading templates...'+
+    '</div>';
+  }
+
+  return '<div>'+
+    '<div style="margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:16px">'+
+      '<div>'+
+        '<div style="font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 4px">Step 1 of 3</div>'+
+        '<div style="font-weight: 700; font-size: 15px">Select a template to deploy</div>'+
+      '</div>'+
+      '<div style="position:relative; width:260px">'+
+        '<input id="wiz-search" placeholder="Search templates..." '+
+          'value="'+escHtml(S.wizardSearchQuery)+'" oninput="filterWizardTemplates(this.value)" autocomplete="off" '+
+          'style="padding-left:32px; padding-top:6px; padding-bottom:6px; font-size:12px">'+
+        '<div style="position:absolute; left:10px; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--muted)">'+ico('search',12)+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<div id="wizard-templates-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(175px, 1fr)); gap:10px">'+
+      wizardTemplatesGrid()+
+    '</div>'+
+  '</div>';
+}
+
+// ── Deploy wizard step 2: env var form with DNS guidance ──────────────────────
+function toggleWizardService(name, skip) {
+  S.deployWizardSkip = S.deployWizardSkip || [];
+  if (skip) {
+    if (!S.deployWizardSkip.includes(name)) {
+      S.deployWizardSkip.push(name);
+    }
+  } else {
+    S.deployWizardSkip = S.deployWizardSkip.filter(x => x !== name);
+  }
+  // Re-render Step 2
+  const container = document.getElementById('wiz-step-container');
+  if (container) {
+    container.innerHTML = wizardStep2Content();
+  }
+}
+
+function templateInsights(app){
+  const facts=[];
+  const vars=app.env_vars||[];
+  const services=app.extra_services||[];
+  const known={
+    umami:['Default first login is usually username admin and password umami. Change it immediately after sign-in.'],
+    grafana:['Initial admin username is controlled by GF_SECURITY_ADMIN_USER. Set GF_SECURITY_ADMIN_PASSWORD before deploying.'],
+    nextcloud:['The admin account is created from NEXTCLOUD_ADMIN_USER and NEXTCLOUD_ADMIN_PASSWORD on first boot.'],
+    keycloak:['The first admin account is created from KEYCLOAK_ADMIN and KEYCLOAK_ADMIN_PASSWORD.'],
+    n8n:['Basic auth is enabled by default. Keep N8N_BASIC_AUTH_PASSWORD and N8N_ENCRYPTION_KEY safe because they protect workflows and credentials.'],
+    pihole:['The Pi-hole admin panel uses WEBPASSWORD. DNS/ad-blocking templates may need additional network or router configuration after deployment.'],
+    gitlab:['The root account uses GITLAB_ROOT_PASSWORD on first boot. GitLab can take several minutes before the web UI is ready.'],
+    seafile:['The admin account uses SEAFILE_ADMIN_EMAIL and SEAFILE_ADMIN_PASSWORD.'],
+    directus:['The first admin user uses ADMIN_EMAIL and ADMIN_PASSWORD.'],
+    appflowy:['The admin account uses APPFLOWY_GOTRUE_ADMIN_EMAIL and APPFLOWY_GOTRUE_ADMIN_PASSWORD.'],
+    superset:['The initial admin user is created from ADMIN_USERNAME, ADMIN_EMAIL, and ADMIN_PASSWORD.'],
+    mailu:['Mailu needs correct MX/SPF/DKIM/DMARC DNS outside Vessel for real mail delivery.'],
+    mailcow:['Mailcow needs correct MX/SPF/DKIM/DMARC DNS outside Vessel for real mail delivery.'],
+    plex:['Plex may require a claim token from plex.tv/claim on first deployment.'],
+  };
+  (known[app.id]||[]).forEach(x=>facts.push(x));
+  vars.forEach(ev=>{
+    const k=(ev.key||'').toUpperCase();
+    if(k.includes('ADMIN')&&k.includes('PASSWORD')){
+      facts.push('Set '+ev.key+' now; it becomes the initial admin password for this app.');
+    }else if(k.includes('ADMIN')&&(k.includes('USER')||k.includes('EMAIL'))&&ev.default){
+      facts.push('Initial admin identity: '+ev.key+' defaults to '+ev.default+'.');
+    }else if(ev.secret&&ev.required&&!ev.default){
+      facts.push('Generate and save '+ev.key+' before deploying. It may be required for logins, sessions, or stored credentials.');
+    }
+  });
+  if(services.length){
+    facts.push('Vessel will also start '+services.length+' sidecar service'+(services.length>1?'s':'')+' for this template: '+services.map(s=>s.name).join(', ')+'.');
+  }
+  if(app.health_check&&app.health_check.test&&app.health_check.test.length){
+    facts.push('Health checks are configured. The app may show as starting until its internal readiness endpoint responds.');
+  }
+  return [...new Set(facts)].slice(0,6);
+}
+function onboardingBox(app, facts){
+  if(!facts.length)return'';
+  return'<div class="card" style="margin-bottom:16px;background:var(--surface2);border-color:var(--border2)">'+
+    '<div style="font-weight:600;font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:8px">'+ico('alert-triangle',14,'var(--yellow)')+'First-run notes for '+escHtml(app.name||app.id)+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:7px">'+
+      facts.map(f=>'<div style="display:flex;gap:8px;color:var(--muted2);font-size:12px"><span style="color:var(--yellow)">•</span><span>'+escHtml(f)+'</span></div>').join('')+
+    '</div>'+
+  '</div>';
+}
+
+function wizardStep2Content() {
+  const app = S.deployWizardApp;
+  if (!app) return '';
+  const vars = app.env_vars || [];
+  const services = app.extra_services || [];
+  const insights = templateInsights(app);
+  
+  const envRows = vars.map(ev => {
+    const id = 'wenv_' + ev.key;
+    const type = ev.secret ? 'password' : 'text';
+    const val = escAttr(Object.prototype.hasOwnProperty.call(S.deployWizardEnv, ev.key) ? S.deployWizardEnv[ev.key] : (ev.default || ''));
+    return '<div class="fg" style="margin-bottom:12px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+        '<label style="margin-bottom:5px">' + escHtml(ev.key) + (ev.required ? ' <span style="color:var(--red)">*</span>' : '') + '</label>' +
+        (ev.secret ? '<button type="button" class="btn btn-xs" onclick="(function(){const el=document.getElementById(\'' + id + '\');if(!el)return;const b=new Uint8Array(32);crypto.getRandomValues(b);el.value=Array.from(b).map(x=>x.toString(16).padStart(2,\'0\')).join(\'\');S.deployWizardEnv[\'' + escAttr(ev.key) + '\']=el.value;})()">Generate</button>' : '') +
+      '</div>' +
+      '<input id="' + id + '" type="' + type + '" value="' + val + '" placeholder="' + escAttr(ev.description || ev.key) + '" ' +
+        (ev.required ? 'required' : '') + ' ' +
+        'oninput="S.deployWizardEnv[\'' + escAttr(ev.key) + '\']=this.value">' +
+      (ev.description ? '<div style="font-size:11px;color:var(--muted);margin-top:4px">' + escHtml(ev.description) + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  let sidecarsHtml = '';
+  if (services.length > 0) {
+    sidecarsHtml = '<div class="card" style="margin-bottom:16px">' +
+      '<div style="font-weight:600;font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:8px">' + ico('layers', 14, 'var(--accent)') + 'Compose Plan & Sidecars</div>' +
+      '<div style="font-size:12px;color:var(--muted2);margin-bottom:12px">Optional sidecars can be skipped if you wish to provide your own external instance.</div>' +
+      services.map(s => {
+        const optional = !!s.optional;
+        const isSkipped = S.deployWizardSkip.includes(s.name);
+        return '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--border)">' +
+          '<input type="checkbox" ' + (isSkipped ? 'checked' : '') + ' ' + (!optional ? 'disabled' : '') + ' ' +
+            'onchange="toggleWizardService(\'' + escAttr(s.name) + '\',this.checked)" style="width:auto;margin-top:3px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+              '<span style="font-weight:600;font-size:12px">' + escHtml(s.name) + '</span>' +
+              '<span style="font-size:10px;color:var(--muted);font-family:var(--mono)">' + escHtml(s.image) + '</span>' +
+              (s.role ? '<span class="tag" style="background:var(--surface3);color:var(--muted2)">' + escHtml(s.role) + '</span>' : '') +
+              (optional ? '<span class="tag" style="background:var(--green-dim);color:var(--green)">optional</span>' : '') +
+            '</div>' +
+            '<div style="font-size:11px;color:var(--muted);margin-top:3px">' +
+              (optional ? (isSkipped ? 'Skipped. Fill the environment variables below to connect your external instance.' : 'Uncheck to skip the Vessel-managed service and use your own.') : 'Required sidecar service.') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  return '<div>' +
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Step 2 of 3</div>' +
+      '<div style="font-weight:700;font-size:16px">Configure ' + escHtml(app.name || app.id) + '</div>' +
+    '</div>' +
+    onboardingBox(app, insights) +
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">' + ico('settings', 14, 'var(--accent)') + 'Deployment Settings</div>' +
+      '<div class="grid2">' +
+        '<div class="fg"><label>Deployment Name <span style="color:var(--red)">*</span></label>' +
+          '<input placeholder="my-app" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required ' +
+            'value="' + escAttr(S.deployWizardName) + '" oninput="S.deployWizardName=this.value"></div>' +
+        '<div class="fg"><label>Custom Domain (optional)</label>' +
+          '<input placeholder="app.example.com" ' +
+            'value="' + escAttr(S.deployWizardDomain) + '" ' +
+            'onfocus="ensureSystemIP()" ' +
+            'oninput="S.deployWizardDomain=this.value;S.dnsCheck=null;(function(){const box=document.getElementById(\'wiz-dns-box\');if(box)box.innerHTML=dnsGuidanceBox(S.deployWizardDomain);})()">' +
+          '<div id="wiz-dns-box">' + dnsGuidanceBox(S.deployWizardDomain) + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    sidecarsHtml +
+    (vars.length ?
+      '<div class="card" style="margin-bottom:16px">' +
+        '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">' + ico('file-code', 14, 'var(--accent)') + 'Environment Variables</div>' +
+        envRows +
+      '</div>' : '') +
+    '<div style="display:flex;gap:8px;justify-content:space-between">' +
+      '<button type="button" class="btn" onclick="wizardBack()" style="display:flex;align-items:center;gap:5px">← Back</button>' +
+      '<button type="button" class="btn-primary" onclick="wizardNext()" style="display:flex;align-items:center;gap:5px">' +
+        'Review ' + ico('chevron-right', 13) + '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function wizardStep2(){
+  return '<div id="wiz-step-container">' + wizardStep2Content() + '</div>';
+}
+
+// ── Deploy wizard step 3: review & graphical topology ─────────────────────────
+function topologyDiagram(app){
+  if(!app)return'';
+  const skip=S.deployWizardSkip||[];
+  const services=app.extra_services||[];
+  const activeSidecars=services.filter(s=>!skip.includes(s.name));
+  const hasSidecars=services.length>0;
+
+  const cloudPath = "M 45 95 c -4 -7 -13 -7 -17 0 c -8 -4 -17 2 -15 10 c -5 3 -4 12 2 13 h 30 c 6 -1 7 -10 2 -13 c 1 -4 -4 -9 -12 -10 z";
+
+  let svg = '<svg width="100%" height="200" viewBox="0 0 600 200" style="background:var(--surface2);border-radius:var(--r);border:1px solid var(--border)">'+
+    '<defs>'+
+      '<marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">'+
+        '<path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--muted)" />'+
+      '</marker>'+
+      '<marker id="arrow-accent" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">'+
+        '<path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="var(--accent)" />'+
+      '</marker>'+
+      '<linearGradient id="primaryGrad" x1="0%" y1="0%" x2="100%" y2="100%">'+
+        '<stop offset="0%" stop-color="var(--accent)" />'+
+        '<stop offset="100%" stop-color="var(--accent2)" />'+
+      '</linearGradient>'+
+    '</defs>';
+
+  svg += '<g class="pulse" style="animation-duration: 3s">'+
+    '<path d="'+cloudPath+'" fill="none" stroke="var(--accent)" stroke-width="2" transform="scale(1.5) translate(-2, 10)" />'+
+    '<text x="50" y="152" fill="var(--accent)" font-size="10" font-weight="600" text-anchor="middle">CLIENT</text>'+
+  '</g>';
+
+  svg += '<path d="M 85 100 L 172 100" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#arrow-accent)" stroke-dasharray="4,4" />';
+
+  svg += '<g>'+
+    '<rect x="180" y="50" width="160" height="100" rx="8" fill="url(#primaryGrad)" stroke="var(--accent2)" stroke-width="1" />'+
+    '<text x="260" y="85" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">'+escHtml((app.name||app.id).toUpperCase())+'</text>'+
+    '<text x="260" y="105" fill="#ffffffb0" font-size="9" font-family="var(--mono)" text-anchor="middle">PRIMARY</text>'+
+    '<text x="260" y="128" fill="#ffffff90" font-size="9" font-family="var(--mono)" text-anchor="middle">Port '+(app.proxy_port || 80)+'</text>'+
+  '</g>';
+
+  if (!hasSidecars) {
+    svg += '<text x="470" y="105" fill="var(--muted)" font-size="11" text-anchor="middle">No sidecars required</text>';
+  } else {
+    services.forEach((s, idx) => {
+      const isSkipped = skip.includes(s.name);
+      const boxCount = services.length;
+      let boxY = 50;
+      let arrowD = "";
+
+      if (boxCount === 1) {
+        boxY = 50;
+        arrowD = "M 340 100 L 422 100";
+      } else if (boxCount === 2) {
+        boxY = idx === 0 ? 15 : 110;
+        arrowD = idx === 0 ? "M 340 85 L 422 55" : "M 340 115 L 422 145";
+      } else {
+        const gap = 170 / boxCount;
+        boxY = 15 + idx * gap;
+        arrowD = "M 340 100 L 422 " + (boxY + 25);
+      }
+
+      const boxX = 430;
+      const boxW = 140;
+      const boxH = boxCount > 2 ? (150 / boxCount) : 75;
+
+      const fill = isSkipped ? 'var(--surface)' : 'var(--surface2)';
+      const stroke = isSkipped ? 'var(--border)' : 'var(--border2)';
+      const opacity = isSkipped ? '0.4' : '1.0';
+      const dash = isSkipped ? 'stroke-dasharray="3,3"' : '';
+
+      svg += '<g opacity="'+opacity+'">'+
+        '<rect x="'+boxX+'" y="'+boxY+'" width="'+boxW+'" height="'+boxH+'" rx="6" fill="'+fill+'" stroke="'+stroke+'" stroke-width="1.5" '+dash+' />'+
+        '<text x="'+(boxX + 70)+'" y="'+(boxY + (boxH/2) - 4)+'" fill="var(--text)" font-size="11" font-weight="600" text-anchor="middle">'+escHtml(s.name)+'</text>'+
+        '<text x="'+(boxX + 70)+'" y="'+(boxY + (boxH/2) + 10)+'" fill="var(--accent2)" font-size="9" font-family="var(--mono)" text-anchor="middle">'+escHtml(s.role || "sidecar")+(isSkipped ? " (skipped)" : "")+'</text>'+
+      '</g>';
+
+      const arrowStroke = isSkipped ? 'var(--border)' : 'var(--muted)';
+      const arrowDash = isSkipped ? 'stroke-dasharray="3,3"' : '';
+      svg += '<path d="'+arrowD+'" stroke="'+arrowStroke+'" stroke-width="1.5" fill="none" marker-end="url(#arrow)" '+arrowDash+' />';
+    });
+  }
+
+  svg += '</svg>';
+  return svg;
+}
+
+function wizardStep3(){
+  const app = S.deployWizardApp;
+  if (!app) return '';
+  const name = S.deployWizardName || '';
+  const domain = S.deployWizardDomain || '';
+  const env = S.deployWizardEnv || {};
+  const skip = S.deployWizardSkip || [];
+  const insights = templateInsights(app);
+
+  const services = app.extra_services || [];
+  const activeServices = services.filter(s => !skip.includes(s.name));
+
+  const envKeys = Object.keys(env);
+  const envPreview = envKeys.map(k => {
+    const ev = app.env_vars && app.env_vars.find(x => x.key === k);
+    const isSecret = ev && ev.secret;
+    const displayVal = isSecret ? '••••••••••••••••' : escHtml(env[k] || '');
+    return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0">' +
+      '<code style="font-family:var(--mono);color:var(--muted)">' + escHtml(k) + '</code>' +
+      '<span style="color:var(--muted)">=</span>' +
+      '<span style="font-family:var(--mono)">' + displayVal + '</span>' +
+    '</div>';
+  }).join('');
+
+  return '<div>' +
+    '<div style="margin-bottom:20px">' +
+      '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Step 3 of 3</div>' +
+      '<div style="font-weight:700;font-size:16px">Review & Deploy ' + escHtml(app.name || app.id) + '</div>' +
+    '</div>' +
+    '<div class="card" style="margin-bottom:16px;padding:16px 20px">' +
+      '<div style="font-weight:600;font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:8px">' + ico('layers', 14, 'var(--accent)') + 'Topology & Service Map</div>' +
+      topologyDiagram(app) +
+    '</div>' +
+    onboardingBox(app, insights) +
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div style="font-weight:600;font-size:13px;margin-bottom:14px;display:flex;align-items:center;gap:8px">' + ico('check-circle', 14, 'var(--accent)') + 'Deployment Details</div>' +
+      '<table class="tbl" style="margin-bottom:12px">' +
+        '<tbody>' +
+          '<tr><td style="width:160px;font-weight:600">Application</td><td><div style="display:flex;align-items:center;gap:8px">' + imgAvatar(app.image, 24) + ' ' + escHtml(app.name || app.id) + '</div></td></tr>' +
+          '<tr><td style="font-weight:600">Deployment Name</td><td style="font-family:var(--mono)">' + escHtml(name) + '</td></tr>' +
+          (domain ? '<tr><td style="font-weight:600">Custom Domain</td><td><a href="https://' + domain + '" target="_blank" style="color:var(--accent2)">' + escHtml(domain) + '</a></td></tr>' : '') +
+          '<tr><td style="font-weight:600">Services Stack</td><td>' +
+            '<span style="font-weight:500">' + escHtml(app.name || app.id) + '</span>' +
+            (activeServices.length ? ' + ' + activeServices.map(s => '<span style="color:var(--accent2);font-weight:500">' + escHtml(s.name) + '</span>').join(' + ') : '') +
+            (skip.length ? ' <span style="color:var(--muted);font-size:11px">(' + skip.length + ' service' + (skip.length > 1 ? 's' : '') + ' skipped)</span>' : '') +
+          '</td></tr>' +
+        '</tbody>' +
+      '</table>' +
+      (envKeys.length ?
+        '<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:12px">' +
+          '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Environment Variables</div>' +
+          '<div style="background:var(--surface2);border-radius:var(--r);padding:10px 14px">' + envPreview + '</div>' +
+        '</div>' : '') +
+    '</div>' +
+    '<div style="display:flex;gap:8px;justify-content:space-between">' +
+      '<button type="button" class="btn" onclick="wizardBack()" style="display:flex;align-items:center;gap:5px">← Back</button>' +
+      '<button type="button" class="btn-primary" onclick="wizardSubmit()" style="display:flex;align-items:center;gap:6px" ' + (S.deploying ? 'disabled' : '') + '>' +
+        (S.deploying ? ico('loader', 13) + ' Deploying...' : ico('rocket', 13) + ' Deploy Stack') + '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function deployWizard(){
+  if (S.deployStep === 1) return wizardStep1();
+  if (S.deployStep === 2) return wizardStep2();
+  if (S.deployStep === 3) return wizardStep3();
+  return '';
+}
+
+async function wizardSubmit(){
+  const app = S.deployWizardApp;
+  if (!app) return;
+  const name = S.deployWizardName.trim();
+  if (!name) { set({error: 'Deployment name is required'}); return; }
+  const domain = S.deployWizardDomain.trim().toLowerCase();
+  if(domain){
+    const check=S.dnsCheck&&S.dnsCheck.domain===domain?S.dnsCheck:null;
+    if(!check||!check.resolved){set({error:'Custom domain DNS is not ready yet. Add the A record, then use Check DNS before deploying.'});return}
+  }
+  const env = S.deployWizardEnv;
+  const skip = S.deployWizardSkip;
+
+  set({deploying: true, error: null});
+  try {
+    await runTracked('POST', '/deployments', {
+      app_id: app.id,
+      name,
+      domain,
+      env,
+      skip_services: skip
+    },{
+      navigateTo:'containers',
+      deploying:false,
+      resetState:{
+        deployStep:1,
+        deployWizardApp:null,
+        deployWizardEnv:{},
+        deployWizardName:'',
+        deployWizardDomain:'',
+        deployWizardSkip:[]
+      }
+    });
+  } catch (e) {
+    set({deploying: false, error: e.message});
+  }
+}function toggleAutoRefresh(loadFn){
+  const next=!S.autoRefreshEnabled;
+  if(next){
+    if(S.autoRefreshTimer)clearInterval(S.autoRefreshTimer);
+    const timer=setInterval(loadFn,5000);
+    set({autoRefreshEnabled:true,autoRefreshTimer:timer});
+  }else{
+    clearInterval(S.autoRefreshTimer);
+    set({autoRefreshEnabled:false,autoRefreshTimer:null});
+  }
+  localStorage.setItem('vessel-autorefresh',next?'1':'0');
+}
+function stopAutoRefresh(){
+  if(S.autoRefreshTimer){
+    clearInterval(S.autoRefreshTimer);
+    S.autoRefreshTimer=null;
+    S.autoRefreshEnabled=false;
+  }
+}
+function autoRefreshToggle(loadFn){
+  const on=S.autoRefreshEnabled;
+  return'<button class="btn btn-sm'+(on?' btn-primary':'')+'" onclick="toggleAutoRefresh('+loadFn.name+')" title="'+(on?'Disable':'Enable')+' auto-refresh" style="display:flex;align-items:center;gap:5px">'+
+    ico('refresh-cw',13)+' '+(on?'Auto-refresh ON':'Auto-refresh OFF')+
+  '</button>';
+}
+// ── Layout ────────────────────────────────────────────────────────────────────
+function render(){
+  if(!S.authReady){
+    document.getElementById('app').innerHTML='<div style="width:100%;height:100vh;display:flex;align-items:center;justify-content:center;color:var(--muted)">Loading Vessel…</div>';
+    return;
+  }
+  if(!S.configured||!S.authenticated){
+    document.getElementById('app').innerHTML=authPage();
+    return;
+  }
+  // Stop auto-refresh when navigating away from a page that supports it
+  const autoRefreshPages=['nginx','containers'];
+  if(S._prevPage&&S._prevPage!==S.page&&autoRefreshPages.indexOf(S._prevPage)!==-1&&autoRefreshPages.indexOf(S.page)===-1){
+    stopAutoRefresh();
+  }
+  S._prevPage=S.page;
+  const navItems=[
+    {id:'containers',label:'Apps',icon:'layout-dashboard'},
+    {id:'compose',label:'Compose',icon:'layers'},
+    {id:'operations',label:'Operations',icon:'file-text',minRole:20},
+    {id:'nginx',label:'Nginx',icon:'globe',minRole:30},
+    {id:'deploy',label:'Deploy',icon:'rocket'},
+    {id:'settings',label:'Settings',icon:'settings',minRole:30},
+  ].filter(n=>!n.minRole||roleRank((S.currentUser&&S.currentUser.role)||'viewer')>=n.minRole);
+  S.page=normalizePage(S.page);
+  const sidebar='<nav style="width:var(--sidebar);min-width:var(--sidebar);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh;overflow:hidden">'+
+    '<div style="padding:16px;border-bottom:1px solid var(--border)">'+
+      '<div style="display:flex;align-items:center;gap:10px">'+
+        '<div style="width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ico('anchor',16,'#fff')+'</div>'+
+        '<div><div style="font-weight:700;font-size:14px;letter-spacing:-.3px">Vessel</div>'+
+        '<div style="font-size:10px;color:var(--muted)">'+(S.serverVersion?'v'+S.serverVersion:'')+'</div></div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="padding:8px;flex:1">'+
+    navItems.map(n=>{
+      const a=S.page===n.id||(S.page==='logs'&&n.id==='containers');
+      return'<a href="#" onclick="nav(\''+n.id+'\');return false" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r);color:'+(a?'var(--text)':'var(--muted)')+';background:'+(a?'var(--surface2)':'transparent')+';font-weight:'+(a?'600':'400')+';margin-bottom:2px;font-size:13px;transition:all .15s;text-decoration:none">'+
+        ico(n.icon,16,a?'var(--accent)':'currentColor')+n.label+'</a>';
+    }).join('')+
+    '</div>'+
+    '<div style="padding:12px 16px;border-top:1px solid var(--border)">'+
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">'+escHtml((S.currentUser&&S.currentUser.username)||'')+' · '+escHtml((S.currentUser&&S.currentUser.role)||'')+'</div>'+
+      '<button class="btn btn-xs" onclick="logout()" style="width:100%;margin-bottom:8px">Log out</button>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between">'+
+        '<a href="https://github.com/Yash121l/Vessel" target="_blank" style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px">'+
+          ico('github',13)+'GitHub</a>'+
+        '<button class="btn btn-xs" onclick="toggleTheme()" title="Toggle light/dark mode" style="display:flex;align-items:center;gap:4px;padding:3px 8px">'+
+          (document.documentElement.getAttribute('data-theme')==='light'?ico('moon',12)+' Dark':ico('sun',12)+' Light')+
+        '</button>'+
+      '</div>'+
+    '</div></nav>';
+  const errBanner=errorBanner(S.error);
+  const pages={containers:pageContainers,deployments:pageContainers,compose:pageCompose,operations:pageOperations,nginx:pageNginx,deploy:pageDeploy,logs:pageLogs,settings:pageSettings};
+  const content=(pages[S.page]||pageContainers)();
+  document.getElementById('app').innerHTML=
+    sidebar+
+    '<div style="flex:1;overflow-y:auto;height:100vh">'+
+      '<div style="padding:28px 32px;max-width:1400px;margin:0 auto">'+errBanner+content+'</div>'+
+    '</div>';
+}
+function authPage(){
+  const setup=S.authMode==='setup'||!S.configured;
+  const errBanner=S.error?'<div style="background:var(--red-dim);border:1px solid #ef444430;border-radius:var(--r);padding:10px 12px;margin-bottom:14px;color:var(--red);font-size:13px">'+escHtml(S.error)+'</div>':'';
+  return'<div style="width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg)">'+
+    '<form onsubmit="authSubmit(event)" class="card" style="width:100%;max-width:380px">'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:22px">'+
+        '<div style="width:36px;height:36px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center">'+ico('anchor',18,'#fff')+'</div>'+
+        '<div><div style="font-weight:700;font-size:16px">Vessel</div><div style="font-size:12px;color:var(--muted)">'+(setup?'Create owner account':'Sign in')+'</div></div>'+
+      '</div>'+errBanner+
+      '<div class="fg"><label>Username</label><input name="username" value="admin" autocomplete="username" required></div>'+
+      '<div class="fg"><label>Password</label><input name="password" type="password" minlength="'+(setup?'12':'1')+'" autocomplete="'+(setup?'new-password':'current-password')+'" required></div>'+
+      (setup?'<div style="font-size:12px;color:var(--muted);margin:-4px 0 18px">Use at least 12 characters. This protects deployment, logs, and host controls.</div>':'')+
+      '<button class="btn-primary" style="width:100%">'+(setup?'Create admin':'Log in')+'</button>'+
+    '</form></div>';
+}
+// ── Apps page ─────────────────────────────────────────────────────────────────
+function pageContainers(){
+  if(S.loading)return loadingSpinner('Loading apps...');
+  const managed=S.deployments.filter(d=>!d.imported);
+  const imported=S.deployments.filter(d=>d.imported);
+  const trackedIds=new Set();const trackedNames=new Set();
+  S.deployments.forEach(d=>{
+    if(d.container_id){trackedIds.add(d.container_id);trackedIds.add(d.container_id.slice(0,12))}
+    if(d.name)trackedNames.add(d.name);
+  });
+  const untracked=S.containers.filter(c=>!c.managed_by_vessel&&!trackedIds.has(c.id)&&!trackedIds.has(c.id.slice(0,12))&&!trackedNames.has(c.name));
+  const running=S.containers.filter(c=>c.state==='running').length;
+  let h='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px">'+
+    '<div><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Apps</h1>'+
+      '<p style="color:var(--muted);font-size:13px;margin-top:4px"><span style="color:var(--green);font-weight:600">'+running+' running</span> · '+S.containers.length+' total</p></div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button class="btn btn-sm" onclick="load()" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
+      '<button class="btn-primary btn-sm" onclick="nav(\'deploy\')" style="display:flex;align-items:center;gap:5px">'+ico('plus',12)+' Deploy</button>'+
+    '</div></div>';
+  function section(title,count,cards,mb){
+    return'<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+
+      '<span>'+title+'</span><span style="background:var(--surface2);border-radius:10px;padding:1px 7px;font-size:10px">'+count+'</span></div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:10px;margin-bottom:'+(mb||28)+'px">'+cards+'</div>';
+  }
+  if(managed.length)h+=section('Vessel Managed',managed.length,managed.map(cardManaged).join(''));
+  if(imported.length)h+=section('Monitored',imported.length,imported.map(cardImported).join(''));
+  const uRun=untracked.filter(c=>c.state==='running');
+  const uStop=untracked.filter(c=>c.state!=='running');
+  if(uRun.length)h+=section('Running — click Monitor to track',uRun.length,uRun.map(cardDiscovered).join(''));
+  if(uStop.length)h+=section('Stopped / Exited',uStop.length,uStop.map(cardDiscovered).join(''),0);
+  if(!managed.length&&!imported.length&&!untracked.length){
+    h+=emptyState('rocket','No containers yet','Deploy an app',"nav('deploy')");
+  }
+  return h;
+}
+function cardManaged(d){
+  const r=d.status==='running';
+  const app=S.apps.find(a=>a.id===d.app_id);
+  const img=app?app.image:(d.image||d.app_id);
+  return'<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px 18px">'+
+    imgAvatar(img,36)+
+    '<div style="flex:1;min-width:0">'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+        '<span style="font-weight:600;font-size:14px">'+d.name+'</span>'+badge(d.status)+'</div>'+
+      '<div style="color:var(--muted);font-size:11px;margin-top:3px">'+d.app_id+
+        (d.domain?' · <a href="https://'+d.domain+'" target="_blank" style="color:var(--accent2)">'+d.domain+'</a>':'')+
+      '</div></div>'+
+    '<div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">'+
+      (r?'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'stop\')">Stop</button>':'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'start\')">Start</button>')+
+      '<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'restart\')">Restart</button>'+
+      '<button class="btn btn-sm" onclick="openLogs(\''+d.id+'\',\'d\',\''+d.name+'\')">Logs</button>'+
+      '<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'update\')">Update</button>'+
+      '<button class="btn btn-sm" onclick="nav(\'compose\');setTimeout(()=>loadComposeDetail(\''+d.id+'\'),50)" style="display:flex;align-items:center;gap:4px">'+ico('layers',11)+' Compose</button>'+
+      '<button class="btn-danger btn-sm" onclick="remove(\''+d.id+'\',\''+d.name+'\')">'+ico('trash',11)+'</button>'+
+    '</div></div>';
+}
+function cardImported(d){
+  const r=d.status==='running';
+  const ports=d.ports?d.ports.split(', ').filter(Boolean):[];
+  return'<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px 18px">'+
+    imgAvatar(d.image,36)+
+    '<div style="flex:1;min-width:0">'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+        '<span style="font-weight:600;font-size:14px">'+d.name+'</span>'+badge(d.status)+'<span class="tag tag-imported">monitored</span></div>'+
+      '<div style="color:var(--muted);font-size:11px;margin-top:3px">'+(d.image||d.app_id)+(ports.length?' · <span style="color:var(--accent2)">'+ports.slice(0,2).join(' · ')+'</span>':'')+
+      '</div></div>'+
+    '<div style="display:flex;gap:5px;flex-shrink:0">'+
+      (r?'<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'stop\',\''+d.name+'\')">Stop</button>':'<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'start\',\''+d.name+'\')">Start</button>')+
+      '<button class="btn btn-sm" onclick="actC(\''+d.container_id+'\',\'restart\',\''+d.name+'\')">Restart</button>'+
+      '<button class="btn btn-sm" onclick="openLogs(\''+d.name+'\',\'c\',\''+d.name+'\')">Logs</button>'+
+    '</div></div>';
+}
+function cardDiscovered(c){
+  const r=c.state==='running';
+  const ports=c.ports&&c.ports.length?c.ports.slice(0,2).join(' · '):'';
+  return'<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px 18px;'+(r?'':'opacity:.65;')+'">'+
+    imgAvatar(c.image,36)+
+    '<div style="flex:1;min-width:0">'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+        '<span style="font-weight:600;font-size:14px">'+c.name+'</span>'+badge(c.state)+'</div>'+
+      '<div style="color:var(--muted);font-size:11px;margin-top:3px">'+c.image+(ports?' · <span style="color:var(--accent2)">'+ports+'</span>':'')+
+      '</div></div>'+
+    '<div style="display:flex;gap:5px;flex-shrink:0">'+
+      (r?'<button class="btn btn-sm" onclick="openLogs(\''+c.id+'\',\'c\',\''+c.name+'\')">Logs</button>':'')+
+      (r?'<button class="btn-primary btn-sm" onclick="monitor(\''+c.id+'\',\''+c.name+'\')">Monitor</button>':
+         '<button class="btn btn-sm" onclick="actC(\''+c.id+'\',\'start\',\''+c.name+'\')">Start</button>')+
+    '</div></div>';
+}
+// ── Compose page ──────────────────────────────────────────────────────────────
+function pageCompose(){
+  if(S.loading)return loadingSpinner('Loading compose stacks...');
+  const managed=S.deployments.filter(d=>!d.imported&&d.compose_dir);
+  const dbNames=new Set(managed.map(d=>d.name));
+  const externalStacks=(S.composeStacks||[]).filter(s=>!dbNames.has(s.name));
+  const totalStacks=managed.length+externalStacks.length;
+
+  if(S.composeDetail){
+    const cd=S.composeDetail;
+    const svcs=cd.services||[];
+    const images=[...new Set(svcs.map(s=>s.image).filter(Boolean))];
+    const running=svcs.filter(s=>s.state==='running').length;
+    return'<div>'+
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">'+
+        '<button class="btn btn-sm" onclick="set({composeDetail:null,composeId:null})">← Back</button>'+
+        '<div>'+
+          '<h1 style="font-size:20px;font-weight:700;letter-spacing:-.5px">'+cd.deployment_name+'</h1>'+
+          '<div style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:2px">'+cd.compose_dir+'</div>'+
+        '</div>'+
+        '<div style="margin-left:auto">'+
+          '<button class="btn btn-sm" onclick="loadComposeDetail(\''+cd.deployment_id+'\')" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
+        '</div>'+
+      '</div>'+
+      '<div class="grid3" style="margin-bottom:24px">'+
+        '<div class="stat-card"><div class="stat-val">'+svcs.length+'</div><div class="stat-lbl">Services</div></div>'+
+        '<div class="stat-card"><div class="stat-val" style="color:var(--green)">'+running+'</div><div class="stat-lbl">Running</div></div>'+
+        '<div class="stat-card"><div class="stat-val">'+images.length+'</div><div class="stat-lbl">Unique Images</div></div>'+
+      '</div>'+
+      '<div class="card" style="margin-bottom:20px">'+
+        '<div style="font-weight:600;font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ico('layers',14,'var(--accent)')+'Services</div>'+
+        (svcs.length?
+          '<table class="tbl"><thead><tr><th>Service</th><th>Image</th><th>State</th><th>Ports</th><th>Created</th></tr></thead><tbody>'+
+          svcs.map(s=>'<tr>'+
+            '<td><div style="display:flex;align-items:center;gap:8px">'+imgAvatar(s.image,24)+'<span style="font-family:var(--mono);font-size:12px">'+escHtml(s.name)+'</span></div></td>'+
+            '<td><span style="font-family:var(--mono);font-size:11px;color:var(--accent2)">'+escHtml(s.image)+'</span></td>'+
+            '<td>'+badge(s.state||'unknown')+'</td>'+
+            '<td><span style="font-family:var(--mono);font-size:11px">'+escHtml(s.ports||'—')+'</span></td>'+
+            '<td style="font-size:11px;color:var(--muted)">'+escHtml(s.created||'—')+'</td>'+
+          '</tr>').join('')+
+          '</tbody></table>':
+          '<div style="color:var(--muted);text-align:center;padding:20px">No service data — deployment may be stopped</div>')+
+      '</div>'+
+      '<div class="card" style="margin-bottom:20px">'+
+        '<div style="font-weight:600;font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ico('box',14,'var(--accent)')+'Images in this stack</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:10px">'+
+        images.map(img=>'<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r);padding:8px 12px">'+
+          imgAvatar(img,28)+'<span style="font-family:var(--mono);font-size:12px">'+escHtml(img)+'</span>'+
+          '<a href="https://hub.docker.com/r/'+escHtml(img.split(':')[0])+'" target="_blank" style="color:var(--muted);display:flex;align-items:center">'+ico('external-link',11)+'</a>'+
+        '</div>').join('')+
+        (images.length?'':'<span style="color:var(--muted);font-size:13px">No images found</span>')+
+        '</div>'+
+      '</div>'+
+      (cd.compose_yaml?
+        '<div class="card">'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+            '<div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px">'+ico('file-text',14,'var(--accent)')+'docker-compose.yml</div>'+
+            '<button class="btn btn-xs" onclick="copyYaml()" style="display:flex;align-items:center;gap:4px">'+ico('file-code',11)+' Copy</button>'+
+          '</div>'+
+          '<pre id="compose-yaml-pre" style="font-family:var(--mono);font-size:12px;color:#c9d1d9;background:#0d1117;border:1px solid var(--border2);border-radius:var(--r);padding:16px;overflow-x:auto;line-height:1.6;max-height:500px;overflow-y:auto">'+escHtml(cd.compose_yaml)+'</pre>'+
+        '</div>':'')+
+    '</div>';
+  }
+
+  return'<div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px">'+
+      '<div><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Compose Stacks</h1>'+
+        '<p style="color:var(--muted);font-size:13px;margin-top:4px">'+totalStacks+' stack'+(totalStacks!==1?'s':'')+' on this host</p></div>'+
+      '<button class="btn btn-sm" onclick="loadComposeStacks()" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
+    '</div>'+
+    (totalStacks===0?
+      emptyState('layers','No compose stacks yet','Deploy an app',"nav('deploy')"):
+      '<div style="display:grid;gap:12px">'+
+      managed.map(d=>{
+        const r=d.status==='running';
+        const app=S.apps.find(a=>a.id===d.app_id);
+        const img=app?app.image:(d.image||d.app_id);
+        const svcCount=app&&app.extra_services?app.extra_services.length+1:1;
+        return'<div class="card" style="padding:18px 20px;cursor:pointer;transition:border-color .15s" '+
+          'onmouseenter="this.style.borderColor=\'var(--accent)\'" '+
+          'onmouseleave="this.style.borderColor=\'\'" '+
+          'onclick="loadComposeDetail(\''+d.id+'\')" >'+
+          '<div style="display:flex;align-items:center;gap:14px">'+
+            imgAvatar(img,40)+
+            '<div style="flex:1;min-width:0">'+
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">'+
+                '<span style="font-weight:600;font-size:15px">'+d.name+'</span>'+badge(d.status)+
+                '<span class="tag tag-imported">vessel</span>'+
+                '<span style="font-size:11px;color:var(--muted)">'+svcCount+' service'+(svcCount!==1?'s':'')+'</span>'+
+              '</div>'+
+              '<div style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+d.compose_dir+'</div>'+
+              (d.domain?'<div style="font-size:11px;margin-top:3px"><a href="https://'+d.domain+'" target="_blank" style="color:var(--accent2)" onclick="event.stopPropagation()">'+d.domain+'</a></div>':'')+
+            '</div>'+
+            '<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end" onclick="event.stopPropagation()">'+
+              '<button class="btn btn-sm" onclick="loadComposeDetail(\''+d.id+'\')" style="display:flex;align-items:center;gap:5px">'+ico('layers',11)+' View Stack</button>'+
+              '<button class="btn btn-sm" onclick="openLogs(\''+d.id+'\',\'d\',\''+d.name+'\')" style="display:flex;align-items:center;gap:5px">'+ico('file-text',11)+' Logs</button>'+
+              (r?'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'stop\')">Stop</button>':'<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'start\')">Start</button>')+
+              '<button class="btn btn-sm" onclick="act(\''+d.id+'\',\'update\')" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',11)+' Update</button>'+
+            '</div>'+
+          '</div>'+
+        '</div>';
+      }).join('')+
+      externalStacks.map(s=>{
+        const isRunning=(s.status||'').toLowerCase().includes('running');
+        const isMissing=(s.status||'').toLowerCase().includes('exited')||(s.config_files&&!s.config_files.startsWith('/opt/apps'));
+        return'<div class="card" style="padding:18px 20px;border-color:var(--border2)">'+
+          '<div style="display:flex;align-items:center;gap:14px">'+
+            imgAvatar('',40)+
+            '<div style="flex:1;min-width:0">'+
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">'+
+                '<span style="font-weight:600;font-size:15px">'+escHtml(s.name)+'</span>'+
+                '<span class="tag '+(isRunning?'tag-running':'tag-stopped')+'"><span class="dot'+(isRunning?' pulse':'')+'"></span>'+escHtml(s.status)+'</span>'+
+                '<span class="tag" style="background:var(--surface3);color:var(--muted)">external</span>'+
+              '</div>'+
+              '<div style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+escHtml(s.config_files||'—')+'</div>'+
+            '</div>'+
+            '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
+              '<span style="font-size:11px;color:var(--muted)">Not managed by Vessel</span>'+
+              '<button class="btn btn-sm btn-danger" onclick="removeExternalStack(\''+escAttr(s.name)+'\')" style="display:flex;align-items:center;gap:5px">'+ico('trash',11)+' Clean up</button>'+
+            '</div>'+
+          '</div>'+
+        '</div>';
+      }).join('')+
+      '</div>')+
+  '</div>';
+}
+
+function pageDeploy(){
+  const tabs='<div class="tabs">'+
+    '<span class="tab'+(S.deployTab==='templates'?' on':'')+'" onclick="set({deployTab:\'templates\'})">Templates</span>'+
+    '<span class="tab'+(S.deployTab==='custom'?' on':'')+'" onclick="set({deployTab:\'custom\'})">Custom Container</span>'+
+    '<span class="tab'+(S.deployTab==='compose'?' on':'')+'" onclick="set({deployTab:\'compose\'})">Compose Stack</span>'+
+  '</div>';
+  return'<div>'+
+    '<div style="margin-bottom:24px">'+
+      '<h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Deploy</h1>'+
+      '<p style="color:var(--muted);font-size:13px;margin-top:4px">Deploy from curated templates, any Docker Hub image, or define a multi-container compose stack</p>'+
+    '</div>'+tabs+
+    (S.deployTab==='templates'?deployWizard():S.deployTab==='custom'?deployCustomForm():deployComposeForm())+
+  '</div>';
+}
+function deployTemplates(){
+  const apps=S.apps;
+  const selected=apps.find(a=>a.id===S.selectedApp);
+  if(!apps.length)return'<div style="color:var(--muted);text-align:center;padding:40px">Loading templates…</div>';
+  return'<form onsubmit="deploy(event)">'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:24px">'+
+    apps.map(a=>'<label style="cursor:pointer">'+
+      '<input type="radio" name="app_id" value="'+a.id+'" style="display:none" onchange="selectApp(\''+a.id+'\')" '+(S.selectedApp===a.id?'checked':'')+' required>'+
+      '<div id="ac-'+a.id+'" style="background:var(--surface);border:2px solid '+(S.selectedApp===a.id?'var(--accent)':'var(--border)')+';border-radius:var(--r2);padding:18px 12px;text-align:center;transition:all .15s">'+
+        '<div style="display:flex;justify-content:center;margin-bottom:10px">'+imgAvatar(a.image,44)+'</div>'+
+        '<div style="font-weight:600;font-size:13px">'+(a.name||a.id)+'</div>'+
+        '<div style="font-size:11px;color:var(--muted);margin-top:3px">'+(a.category||'')+'</div>'+
+      '</div></label>').join('')+
+    '</div>'+
+    '<div class="card">'+
+      '<div class="grid2">'+
+        '<div class="fg"><label>Deployment Name *</label><input name="dname" placeholder="my-app" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required></div>'+
+        '<div class="fg"><label>Custom Domain (optional)</label><input name="domain" placeholder="app.example.com"></div>'+
+      '</div>'+
+      '<div id="template-config" style="margin-bottom:16px">'+templateConfig(selected)+'</div>'+
+      '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+        '<button type="button" class="btn" onclick="nav(\'containers\')">Cancel</button>'+
+        '<button type="submit" class="btn-primary" style="display:flex;align-items:center;gap:6px"'+(S.deploying?' disabled':'')+'>'+
+          (S.deploying?ico('loader',13)+' Deploying…':ico('rocket',13)+' Deploy')+'</button>'+
+      '</div>'+
+    '</div></form>';
+}
+function selectApp(id){
+  S.selectedApp=id;
+  S.templateSkipServices={};S.templateEnvDraft={};
+  S.apps.forEach(a=>{const el=document.getElementById('ac-'+a.id);if(el)el.style.borderColor=a.id===id?'var(--accent)':'var(--border)'});
+  const app=S.apps.find(a=>a.id===id);
+  const fields=document.getElementById('template-config');
+  if(fields)fields.innerHTML=templateConfig(app);
+}
+function templateConfig(app){
+  if(!app)return'<div style="background:var(--surface2);border-radius:var(--r);padding:14px 16px;color:var(--muted);font-size:13px">Choose a template to see the Compose plan and configure settings.</div>';
+  return servicePlan(app)+envFields(app);
+}
+function servicePlan(app){
+  const services=app.extra_services||[];
+  const skipped=S.templateSkipServices||{};
+  const managed=services.filter(s=>!skipped[s.name]);
+  return'<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:14px">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">'+
+      '<div><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Compose plan</div>'+
+      '<div style="font-size:12px;color:var(--muted2);margin-top:4px">Vessel will create '+(1+managed.length)+' service'+(managed.length?'s':'')+': '+escHtml([app.name||app.id].concat(managed.map(s=>s.name)).join(', '))+'</div></div>'+
+      '<span class="tag" style="background:var(--blue-dim);color:var(--blue)">'+(1+managed.length)+' services</span>'+
+    '</div>'+
+    (services.length?services.map(s=>serviceOption(s,skipped[s.name])).join(''):'<div style="font-size:12px;color:var(--muted)">No external services are required for this template.</div>')+
+  '</div>';
+}
+function serviceOption(s,skipped){
+  const optional=!!s.optional;
+  return'<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-top:1px solid var(--border)">'+
+    '<input type="checkbox" name="skip_service_'+escAttr(s.name)+'" value="'+escAttr(s.name)+'" '+(skipped?'checked':'')+' '+(!optional?'disabled':'')+
+      ' onchange="toggleTemplateService(\''+escAttr(s.name)+'\',this.checked)" style="width:auto;margin-top:3px">'+
+    '<div style="flex:1;min-width:0">'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+        '<span style="font-weight:600;font-size:13px">'+escHtml(s.name)+'</span>'+
+        '<span style="font-size:11px;color:var(--muted);font-family:var(--mono)">'+escHtml(s.image||'')+'</span>'+
+        (s.role?'<span class="tag" style="background:var(--surface3);color:var(--muted2)">'+escHtml(s.role)+'</span>':'')+
+        (optional?'<span class="tag" style="background:var(--green-dim);color:var(--green)">optional</span>':'')+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--muted);margin-top:4px">'+
+        (optional?(skipped?'Skipped. Fill the matching environment fields below with your external host, URL, or credentials.':'Check to skip the Vessel-managed '+escHtml(s.role||'service')+' and use an external one.'):'Required for this template.')+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+function toggleTemplateService(name,skip){
+  S.templateEnvDraft=collectTemplateEnvDraft();
+  S.templateSkipServices=S.templateSkipServices||{};
+  if(skip)S.templateSkipServices[name]=true;else delete S.templateSkipServices[name];
+  const app=S.apps.find(a=>a.id===S.selectedApp);
+  const fields=document.getElementById('template-config');
+  if(fields)fields.innerHTML=templateConfig(app);
+}
+function collectTemplateEnvDraft(){
+  const draft={};
+  document.querySelectorAll('[name^="env_"]').forEach(el=>{draft[el.name.slice(4)]=el.value});
+  return draft;
+}
+function envFields(app){
+  const vars=app.env_vars||[];
+  if(!vars.length)return'';
+  return'<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Configuration</div>'+
+    vars.map(e=>{
+      const id='env_'+e.key;
+      const type=e.secret?'password':'text';
+      const val=escAttr((S.templateEnvDraft&&Object.prototype.hasOwnProperty.call(S.templateEnvDraft,e.key))?S.templateEnvDraft[e.key]:(e.default||''));
+      return'<div class="fg" style="margin-bottom:12px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
+          '<label style="margin-bottom:5px">'+e.key+(e.required?' *':'')+'</label>'+
+          (e.secret?'<button type="button" class="btn btn-xs" onclick="genSecret(\''+id+'\')">Generate</button>':'')+
+        '</div>'+
+        '<input id="'+id+'" name="'+id+'" type="'+type+'" value="'+val+'" placeholder="'+escAttr(e.description||e.key)+'" '+(e.required?'required':'')+'>'+
+        (e.description?'<div style="font-size:11px;color:var(--muted);margin-top:4px">'+escHtml(e.description)+'</div>':'')+
+      '</div>';
+    }).join('')+
+  '</div>';
+}
+function genSecret(id){
+  const el=document.getElementById(id);if(!el)return;
+  const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);
+  el.value=Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function roleRank(r){return{viewer:10,operator:20,admin:30,owner:40}[r]||0}
+function canOperator(){return S.currentUser&&roleRank(S.currentUser.role)>=20}
+function canAdmin(){return S.currentUser&&roleRank(S.currentUser.role)>=30}
+async function createUser(e){
+  e.preventDefault();const f=e.target;
+  try{
+    await api('POST','/users',{username:f.username.value,role:f.role.value,password:f.password.value});
+    f.reset();f.role.value='viewer';await loadUsers();
+  }catch(err){set({error:err.message})}
+}
+async function updateUser(id){
+  const role=document.getElementById('role-'+id).value;
+  const password=document.getElementById('pw-'+id).value;
+  try{await api('PUT','/users/'+id,{role,password});await loadUsers()}catch(err){set({error:err.message})}
+}
+async function deleteUser(id,name){
+  if(!confirm('Delete user "'+name+'"?'))return;
+  try{await api('DELETE','/users/'+id);await loadUsers()}catch(err){set({error:err.message})}
+}
+function deployCustomForm(){
+  const sel=S.hubSelected;
+  const searchSection='<div style="margin-bottom:20px">'+
+    '<div style="font-weight:600;font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:8px">'+ico('search',14,'var(--accent)')+'Search Docker Hub</div>'+
+    '<div style="position:relative">'+
+      '<input id="hubsearch" placeholder="Search for any image: nginx, postgres, redis, grafana…" '+
+        'value="'+escHtml(S.hubQuery)+'" oninput="hubSearch(this.value)" autocomplete="off" '+
+        'style="padding-left:36px">'+
+      '<div style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted)">'+ico('search',14)+'</div>'+
+    '</div>'+
+    '<div id="hub-results" style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);margin-top:4px;max-height:300px;overflow-y:auto;box-shadow:0 8px 24px #0008"></div>'+
+  '</div>';
+  const bannerDisplay=sel?'flex':'none';
+  const bannerContent=sel?
+    (sel.logo?'<img src="'+sel.logo+'" width="40" height="40" style="border-radius:8px;object-fit:contain;background:var(--surface2);flex-shrink:0">':imgAvatar(sel.slug,40))+
+    '<div style="flex:1;min-width:0">'+
+      '<div style="font-weight:600;font-family:var(--mono);font-size:14px">'+escHtml(sel.slug)+'</div>'+
+      '<div style="font-size:12px;color:var(--muted2)">'+escHtml(sel.description||'')+'</div>'+
+    '</div>'+
+    '<a href="https://hub.docker.com/r/'+escHtml(sel.slug)+'" target="_blank" class="btn btn-xs" style="display:flex;align-items:center;gap:4px">'+ico('external-link',11)+' Hub</a>'+
+    '<button class="btn btn-xs" onclick="clearHubSelection()">Change</button>':'';
+  return'<form onsubmit="deployCustom(event)">'+
+    '<div class="card">'+
+      searchSection+
+      '<div id="hub-selected-banner" style="display:'+bannerDisplay+';align-items:center;gap:12px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:var(--r);padding:12px 16px;margin-bottom:16px">'+
+        bannerContent+
+      '</div>'+
+      '<div class="fg"><label>Docker Image *</label>'+
+        '<input id="cimage" name="cimage" placeholder="nginx:latest  ·  postgres:16  ·  myorg/myapp:1.0" '+(sel?'value="'+escHtml(sel.slug)+'"':'')+' required></div>'+
+      '<div class="grid2">'+
+        '<div class="fg"><label>Deployment Name *</label><input name="cname" placeholder="my-nginx" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" required></div>'+
+        '<div class="fg"><label>Custom Domain (optional)</label><input name="cdomain" placeholder="app.example.com" onfocus="ensureSystemIP()" oninput="S.dnsCheck=null;const box=document.getElementById(\'custom-dns-box\');if(box)box.innerHTML=dnsGuidanceBox(this.value)"><div id="custom-dns-box"></div></div>'+
+      '</div>'+
+      '<div class="fg">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+          '<label style="margin:0">Port Mappings</label>'+
+          '<button type="button" class="btn btn-xs" onclick="S.customPorts.push({internal:\'\',external:\'\',protocol:\'tcp\'});render()">+ Add Port</button>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px">'+
+        S.customPorts.map((p,i)=>
+          '<div style="display:flex;gap:6px;align-items:center">'+
+            '<input placeholder="Container port" value="'+escHtml(p.internal)+'" oninput="S.customPorts['+i+'].internal=this.value" style="width:130px">'+
+            '<span style="color:var(--muted);flex-shrink:0;font-size:12px">→ host</span>'+
+            '<input placeholder="Host port" value="'+escHtml(p.external)+'" oninput="S.customPorts['+i+'].external=this.value" style="width:130px">'+
+            '<select oninput="S.customPorts['+i+'].protocol=this.value" style="width:80px">'+
+              '<option value="tcp"'+(p.protocol==='tcp'?' selected':'')+'>tcp</option>'+
+              '<option value="udp"'+(p.protocol==='udp'?' selected':'')+'>udp</option>'+
+            '</select>'+
+            (S.customPorts.length>1?'<button type="button" class="btn-danger btn-xs" onclick="S.customPorts.splice('+i+',1);render()">✕</button>':'')+
+          '</div>'
+        ).join('')+
+        '</div></div>'+
+      '<div class="fg">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+          '<label style="margin:0">Volumes</label>'+
+          '<button type="button" class="btn btn-xs" onclick="S.customVolumes.push({name:\'\',mount:\'\'});render()">+ Add Volume</button>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px">'+
+        S.customVolumes.map((v,i)=>
+          '<div style="display:flex;gap:6px;align-items:center">'+
+            '<input placeholder="Volume name (auto if blank)" value="'+escHtml(v.name)+'" oninput="S.customVolumes['+i+'].name=this.value" style="width:200px">'+
+            '<input placeholder="Mount path e.g. /data" value="'+escHtml(v.mount)+'" oninput="S.customVolumes['+i+'].mount=this.value" style="flex:1">'+
+            (S.customVolumes.length>1?'<button type="button" class="btn-danger btn-xs" onclick="S.customVolumes.splice('+i+',1);render()">✕</button>':'')+
+          '</div>'
+        ).join('')+
+        '</div></div>'+
+      '<div class="fg"><label>Environment Variables (KEY=VALUE, one per line)</label>'+
+        '<textarea name="cenv" rows="5" placeholder="MY_VAR=value&#10;ANOTHER=123" style="font-family:var(--mono);font-size:12px"></textarea></div>'+
+      '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+        '<button type="button" class="btn" onclick="nav(\'containers\')">Cancel</button>'+
+        '<button type="submit" class="btn-primary" style="display:flex;align-items:center;gap:6px"'+(S.deploying?' disabled':'')+'>'+
+          (S.deploying?ico('loader',13)+' Deploying…':ico('rocket',13)+' Deploy')+'</button>'+
+      '</div>'+
+    '</div></form>';
+}
+// ── Compose Stack builder ─────────────────────────────────────────────────────
+function addSidecarPort(i){
+  S.csSidecars[i].ports=S.csSidecars[i].ports||[];
+  S.csSidecars[i].ports.push({internal:'',external:'',protocol:'tcp'});
+  render();
+}
+function removeSidecarPort(i,j){
+  S.csSidecars[i].ports.splice(j,1);
+  render();
+}
+function updateSidecarPort(i,j,field,val){
+  S.csSidecars[i].ports=S.csSidecars[i].ports||[];
+  if(!S.csSidecars[i].ports[j])S.csSidecars[i].ports[j]={internal:'',external:'',protocol:'tcp'};
+  S.csSidecars[i].ports[j][field]=val;
+}
+function deployComposeForm(){
+  const sc=S.csSidecars;
+  function sidecarCard(s,i){
+    return'<div class="card" style="margin-bottom:12px;border-color:var(--border2)">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+        '<div style="font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px">'+ico('box',13,'var(--accent2)')+'Sidecar '+(i+1)+'</div>'+
+        '<button type="button" class="btn-danger btn-xs" onclick="S.csSidecars.splice('+i+',1);render()">Remove</button>'+
+      '</div>'+
+      '<div class="grid2">'+
+        '<div class="fg"><label>Service Name *</label><input placeholder="postgres, redis, worker" value="'+escHtml(s.name)+'" oninput="S.csSidecars['+i+'].name=this.value" required></div>'+
+        '<div class="fg"><label>Image *</label><input placeholder="postgres:16, redis:7-alpine" value="'+escHtml(s.image)+'" oninput="S.csSidecars['+i+'].image=this.value" required></div>'+
+      '</div>'+
+      '<div class="fg"><label>Environment Variables (KEY=VALUE, one per line)</label>'+
+        '<textarea rows="3" placeholder="POSTGRES_DB=myapp&#10;POSTGRES_USER=app&#10;POSTGRES_PASSWORD=secret" style="font-family:var(--mono);font-size:12px" oninput="S.csSidecars['+i+'].env=this.value">'+escHtml(s.env||'')+'</textarea></div>'+
+      '<div class="fg">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+          '<label style="margin:0">Port Mappings</label>'+
+          '<button type="button" class="btn btn-xs" onclick="addSidecarPort('+i+')">+ Add Port</button>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:5px">'+
+        ((s.ports&&s.ports.length?s.ports:[{internal:"",external:"",protocol:"tcp"}]).map((p,pi)=>
+          '<div style="display:flex;gap:6px;align-items:center">'+
+            '<input placeholder="Container port" value="'+escHtml(p.internal)+'" oninput="updateSidecarPort('+i+','+pi+',\'internal\',this.value)" style="width:130px">'+
+            '<span style="color:var(--muted);flex-shrink:0;font-size:12px">to host</span>'+
+            '<input placeholder="Host port" value="'+escHtml(p.external)+'" oninput="updateSidecarPort('+i+','+pi+',\'external\',this.value)" style="width:130px">'+
+            '<select oninput="updateSidecarPort('+i+','+pi+',\'protocol\',this.value)" style="width:80px">'+
+              '<option value="tcp"'+((p.protocol||'tcp')==='tcp'?' selected':'')+'>tcp</option>'+
+              '<option value="udp"'+(p.protocol==='udp'?' selected':'')+'>udp</option>'+
+            '</select>'+
+            ((s.ports||[]).length>1?'<button type="button" class="btn-danger btn-xs" onclick="removeSidecarPort('+i+','+pi+')">x</button>':'')+
+          '</div>'
+        ).join(''))+
+        '</div></div>'+
+      '<div class="fg">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+          '<label style="margin:0">Volumes</label>'+
+          '<button type="button" class="btn btn-xs" onclick="S.csSidecars['+i+'].volumes.push({name:\'\',mount:\'\'});render()">+ Add</button>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:5px">'+
+        (s.volumes||[]).map((v,vi)=>
+          '<div style="display:flex;gap:6px;align-items:center">'+
+            '<input placeholder="vol name (auto)" value="'+escHtml(v.name)+'" oninput="S.csSidecars['+i+'].volumes['+vi+'].name=this.value" style="width:180px">'+
+            '<input placeholder="/data" value="'+escHtml(v.mount)+'" oninput="S.csSidecars['+i+'].volumes['+vi+'].mount=this.value" style="flex:1">'+
+            (s.volumes.length>1?'<button type="button" class="btn-danger btn-xs" onclick="S.csSidecars['+i+'].volumes.splice('+vi+',1);render()">x</button>':'')+
+          '</div>'
+        ).join('')+
+        '</div></div>'+
+      '<div class="fg"><label>Health Check (optional, e.g. CMD pg_isready -U app)</label>'+
+        '<input placeholder="CMD pg_isready -U app" value="'+escHtml(s.healthTest||'')+'" oninput="S.csSidecars['+i+'].healthTest=this.value"></div>'+
+    '</div>';
+  }
+  return'<form onsubmit="deployComposeStack(event)">'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div style="font-weight:700;font-size:14px;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ico('layers',15,'var(--accent)')+'Stack Settings</div>'+
+      '<div class="grid2">'+
+        '<div class="fg"><label>Stack Name *</label><input name="csname" placeholder="my-stack" pattern="[a-z0-9-]+" title="Lowercase letters, numbers and hyphens only" value="'+escHtml(S.csName)+'" oninput="S.csName=this.value" required></div>'+
+        '<div class="fg"><label>Custom Domain (optional)</label><input name="csdomain" placeholder="app.example.com" value="'+escHtml(S.csDomain)+'" onfocus="ensureSystemIP()" oninput="S.csDomain=this.value;S.dnsCheck=null;const box=document.getElementById(\'compose-dns-box\');if(box)box.innerHTML=dnsGuidanceBox(S.csDomain)"><div id="compose-dns-box">'+dnsGuidanceBox(S.csDomain)+'</div></div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div style="font-weight:700;font-size:14px;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ico('rocket',15,'var(--accent)')+'Primary Service</div>'+
+      '<div class="grid2">'+
+        '<div class="fg"><label>Image *</label><input name="cspimage" placeholder="nginx:latest, myorg/myapp:1.0" value="'+escHtml(S.csPrimaryImage)+'" oninput="S.csPrimaryImage=this.value" required></div>'+
+        '<div class="fg"><label>Service Name (defaults to stack name)</label><input name="cspname" placeholder="app" value="'+escHtml(S.csPrimaryName)+'" oninput="S.csPrimaryName=this.value"></div>'+
+      '</div>'+
+      '<div class="fg">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+          '<label style="margin:0">Port Mappings</label>'+
+          '<button type="button" class="btn btn-xs" onclick="S.csPrimaryPorts.push({internal:\'\',external:\'\',protocol:\'tcp\'});render()">+ Add Port</button>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px">'+
+        S.csPrimaryPorts.map((p,i)=>
+          '<div style="display:flex;gap:6px;align-items:center">'+
+            '<input placeholder="Container port" value="'+escHtml(p.internal)+'" oninput="S.csPrimaryPorts['+i+'].internal=this.value" style="width:130px">'+
+            '<span style="color:var(--muted);flex-shrink:0;font-size:12px">to host</span>'+
+            '<input placeholder="Host port" value="'+escHtml(p.external)+'" oninput="S.csPrimaryPorts['+i+'].external=this.value" style="width:130px">'+
+            '<select oninput="S.csPrimaryPorts['+i+'].protocol=this.value" style="width:80px">'+
+              '<option value="tcp"'+(p.protocol==='tcp'?' selected':'')+'>tcp</option>'+
+              '<option value="udp"'+(p.protocol==='udp'?' selected':'')+'>udp</option>'+
+            '</select>'+
+            (S.csPrimaryPorts.length>1?'<button type="button" class="btn-danger btn-xs" onclick="S.csPrimaryPorts.splice('+i+',1);render()">x</button>':'')+
+          '</div>'
+        ).join('')+
+        '</div></div>'+
+      '<div class="fg">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+          '<label style="margin:0">Volumes</label>'+
+          '<button type="button" class="btn btn-xs" onclick="S.csPrimaryVolumes.push({name:\'\',mount:\'\'});render()">+ Add Volume</button>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px">'+
+        S.csPrimaryVolumes.map((v,i)=>
+          '<div style="display:flex;gap:6px;align-items:center">'+
+            '<input placeholder="Volume name (auto)" value="'+escHtml(v.name)+'" oninput="S.csPrimaryVolumes['+i+'].name=this.value" style="width:200px">'+
+            '<input placeholder="/app/data" value="'+escHtml(v.mount)+'" oninput="S.csPrimaryVolumes['+i+'].mount=this.value" style="flex:1">'+
+            (S.csPrimaryVolumes.length>1?'<button type="button" class="btn-danger btn-xs" onclick="S.csPrimaryVolumes.splice('+i+',1);render()">x</button>':'')+
+          '</div>'
+        ).join('')+
+        '</div></div>'+
+      '<div class="fg"><label>Environment Variables (KEY=VALUE, one per line)</label>'+
+        '<textarea rows="4" placeholder="APP_ENV=production&#10;DATABASE_URL=postgres://..." style="font-family:var(--mono);font-size:12px" oninput="S.csPrimaryEnv=this.value">'+escHtml(S.csPrimaryEnv)+'</textarea></div>'+
+    '</div>'+
+    '<div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+        '<div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px">'+ico('box',15,'var(--accent2)')+'Sidecar Services</div>'+
+        '<button type="button" class="btn btn-sm" onclick="S.csSidecars.push({name:\'\',image:\'\',env:\'\',volumes:[{name:\'\',mount:\'\'}],healthTest:\'\',ports:[{internal:\'\',external:\'\',protocol:\'tcp\'}]});render()" style="display:flex;align-items:center;gap:5px">'+ico('plus',12)+' Add Sidecar</button>'+
+      '</div>'+
+      (sc.length?sc.map(sidecarCard).join(''):
+        '<div class="card" style="text-align:center;padding:28px;border-style:dashed;border-color:var(--border2);color:var(--muted)">'+
+          '<div style="margin-bottom:8px">'+ico('box',28)+'</div>'+
+          '<div style="font-size:13px">No sidecars yet — add a database, cache, or worker service</div>'+
+        '</div>')+
+    '</div>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">'+
+      '<button type="button" class="btn" onclick="nav(\'containers\')">Cancel</button>'+
+      '<button type="submit" class="btn-primary" style="display:flex;align-items:center;gap:6px"'+(S.deploying?' disabled':'')+'>'+
+        (S.deploying?ico('loader',13)+' Deploying...':ico('layers',13)+' Deploy Stack')+'</button>'+
+    '</div>'+
+  '</form>';
+}
+async function deployComposeStack(e){
+  e.preventDefault();
+  const name=S.csName.trim();
+  if(!name){set({error:'Stack name is required'});return}
+  if(S.csDomain){
+    const d=S.csDomain.trim().toLowerCase();
+    const check=S.dnsCheck&&S.dnsCheck.domain===d?S.dnsCheck:null;
+    if(!check||!check.resolved){set({error:'Custom domain DNS is not ready yet. Add the A record, then use Check DNS before deploying.'});return}
+  }
+  const image=S.csPrimaryImage.trim();
+  if(!image){set({error:'Primary image is required'});return}
+  const primaryEnv={};
+  (S.csPrimaryEnv||'').trim().split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)primaryEnv[l.slice(0,i).trim()]=l.slice(i+1).trim()});
+  const ports=S.csPrimaryPorts.filter(p=>p.internal).map(p=>({internal:parseInt(p.internal),external:parseInt(p.external||p.internal),protocol:p.protocol||'tcp'}));
+  const volumes=S.csPrimaryVolumes.filter(v=>v.mount).map(v=>({name:v.name||v.mount.replace(/\//g,'-').replace(/^-/,''),mount_path:v.mount}));
+  const primary={name:S.csPrimaryName.trim()||name,image,ports,volumes,environment:primaryEnv};
+  const sidecars=S.csSidecars.map(s=>{
+    const env={};
+    (s.env||'').trim().split('\n').forEach(l=>{const i=l.indexOf('=');if(i>0)env[l.slice(0,i).trim()]=l.slice(i+1).trim()});
+    const vols=(s.volumes||[]).filter(v=>v.mount).map(v=>({name:v.name||v.mount.replace(/\//g,'-').replace(/^-/,''),mount_path:v.mount}));
+    const sidePorts=(s.ports||[]).filter(p=>p.internal).map(p=>({internal:parseInt(p.internal),external:parseInt(p.external||p.internal),protocol:p.protocol||'tcp'}));
+    const sc={name:s.name,image:s.image,environment:env,volumes:vols,ports:sidePorts};
+    if(s.healthTest&&s.healthTest.trim()){
+      const parts=s.healthTest.trim().split(/\s+/);
+      sc.health_check={test:parts,interval:'10s',timeout:'5s',retries:5};
+    }
+    return sc;
+  }).filter(s=>s.name&&s.image);
+  set({deploying:true,error:null});
+  try{
+    await runTracked('POST','/deployments/compose',{name,domain:S.csDomain,primary,sidecars,env:primaryEnv},{
+      navigateTo:'compose',
+      deploying:false,
+      resetState:{csName:'',csDomain:'',csPrimaryImage:'',csPrimaryName:'',
+        csPrimaryPorts:[{internal:'',external:'',protocol:'tcp'}],
+        csPrimaryVolumes:[{name:'',mount:''}],csPrimaryEnv:'',csSidecars:[]}
+    });
+    loadComposeStacks();
+  }catch(err){set({deploying:false,error:err.message})}
+}
+function pageOperations(){
+  const ops=S.operations||[];
+  const selected=S.selectedOperation&&S.selectedOperation.id===S.selectedOperationId?S.selectedOperation:(ops.find(op=>op.id===S.selectedOperationId)||ops[0]||null);
+  const header='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">'+
+    '<div><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Operations</h1>'+
+      '<p style="color:var(--muted);font-size:13px;margin-top:4px">Tracked deployment and system actions with step-level history.</p></div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button class="btn btn-sm" onclick="loadOperations(S.selectedOperationId)" style="display:flex;align-items:center;gap:5px">'+ico('refresh-cw',12)+' Refresh</button>'+
+    '</div></div>';
+  const list=ops.length?ops.map(op=>
+    '<button class="card" onclick="loadOperation(\''+op.id+'\')" style="width:100%;text-align:left;padding:14px 16px;cursor:pointer;'+
+      'border-color:'+(selected&&selected.id===op.id?'var(--accent)':'var(--border)')+';background:'+(selected&&selected.id===op.id?'var(--surface2)':'var(--surface)')+'">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">'+
+        '<strong style="font-size:13px">'+operationKindLabel(op.kind)+'</strong>'+
+        operationStatusTag(op.status)+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--muted2)">'+escHtml(op.resource_name||op.resource_id||'system')+'</div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:6px">'+escHtml(op.summary||op.error||'No summary yet')+'</div>'+
+    '</button>').join(''):'<div class="card" style="color:var(--muted);text-align:center;padding:32px">No operations yet.</div>';
+  let detail='<div class="card" style="padding:24px;color:var(--muted)">Select an operation to inspect its steps.</div>';
+  if(selected){
+    const steps=(selected.steps||[]).map(step=>
+      '<div style="padding:12px 0;border-top:1px solid var(--border)">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">'+
+          '<strong style="font-size:13px">'+escHtml(step.title||step.step_key)+'</strong>'+
+          operationStatusTag(step.status)+
+        '</div>'+
+        (step.details?'<div style="font-size:12px;color:var(--muted2);margin-bottom:8px">'+escHtml(step.details)+'</div>':'')+
+        (step.output?'<pre style="padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);white-space:pre-wrap;max-height:220px">'+escHtml(step.output)+'</pre>':'')+
+      '</div>').join('');
+    detail='<div class="card" style="padding:24px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">'+
+        '<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">'+operationKindLabel(selected.kind)+'</div>'+
+          '<h2 style="font-size:18px;font-weight:700;letter-spacing:-.4px;margin-top:6px">'+escHtml(selected.resource_name||selected.resource_id||'System operation')+'</h2></div>'+
+        operationStatusTag(selected.status)+
+      '</div>'+
+      '<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--muted2);margin-bottom:10px">'+
+        '<span>Actor: '+escHtml(selected.actor_username||'system')+'</span>'+
+        '<span>Created: '+escHtml(new Date(selected.created_at).toLocaleString())+'</span>'+
+        (selected.finished_at?'<span>Finished: '+escHtml(new Date(selected.finished_at).toLocaleString())+'</span>':'')+
+      '</div>'+
+      '<div style="font-size:13px;color:'+(selected.status==='failed'?'var(--red)':'var(--muted2)')+';margin-bottom:12px">'+escHtml(selected.error||selected.summary||'No summary yet')+'</div>'+
+      '<div style="border-top:1px solid var(--border)">'+(steps||'')+'</div>'+
+    '</div>';
+  }
+  return header+
+    '<div style="display:grid;grid-template-columns:minmax(320px,.9fr) minmax(0,1.3fr);gap:16px">'+
+      '<div style="display:flex;flex-direction:column;gap:10px">'+list+'</div>'+
+      '<div>'+detail+'</div>'+
+    '</div>';
+}
+// ── Nginx page ────────────────────────────────────────────────────────────────
+function pageNginx(){
+  if(S.loading)return loadingSpinner('Loading nginx...');
+  const st=S.nginxStatus;const stats=S.nginxStats;
+  const header='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">'+
+    '<div><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Nginx</h1>'+
+      '<p style="color:var(--muted);font-size:13px;margin-top:4px">'+(st?st.version||'nginx':'Loading…')+'</p></div>'+
+    '<div style="display:flex;gap:8px;align-items:center">'+
+      (st&&st.running?'<span class="tag tag-active"><span class="dot pulse"></span>Active</span>':'<span class="tag tag-stopped">Inactive</span>')+
+      '<button class="btn btn-sm" onclick="ngxTest()">Test Config</button>'+
+      '<button class="btn btn-sm" onclick="ngxAction(\'reload\')">Reload</button>'+
+      '<button class="btn btn-sm" onclick="ngxAction(\'restart\')">Restart</button>'+
+      (st&&st.running?'<button class="btn-danger btn-sm" onclick="ngxAction(\'stop\')">Stop</button>':'<button class="btn-success btn-sm" onclick="ngxAction(\'start\')">Start</button>')+
+      autoRefreshToggle(loadNginx)+
+      '<button class="btn btn-sm" onclick="loadNginx()" style="display:flex;align-items:center">'+ico('refresh-cw',12)+'</button>'+
+    '</div></div>';
+  const tabs=['overview','sites','config','logs'].map(t=>
+    '<span class="tab'+(S.nginxTab===t?' on':'')+'" onclick="set({nginxTab:\''+t+'\'})">'+
+      {overview:'Overview',sites:'Sites',config:'nginx.conf',logs:'Logs'}[t]+'</span>').join('');
+  let content='';
+  if(S.nginxTab==='overview')content=nginxOverview(stats,st);
+  else if(S.nginxTab==='sites')content=nginxSitesTab();
+  else if(S.nginxTab==='config')content=nginxConfigTab();
+  else if(S.nginxTab==='logs')content=nginxLogsTab();
+  return header+'<div class="tabs">'+tabs+'</div>'+content;
+}
+function statCard(val,label,sub,color,iconName){
+  return'<div class="stat-card">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start">'+
+      '<div><div class="stat-val" style="color:'+color+'">'+val+'</div>'+
+        '<div class="stat-lbl">'+label+'</div><div class="stat-sub">'+sub+'</div></div>'+
+      '<div style="width:36px;height:36px;background:'+color+'18;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:'+color+'">'+
+        ico(iconName,18,color)+
+      '</div>'+
+    '</div></div>';
+}
+function nginxOverview(stats,st){
+  if(!stats)return'<div style="color:var(--muted);padding:40px;text-align:center">Loading stats…</div>';
+  const total=stats.total_requests||0;
+  const pct=(n)=>total?Math.round(n/total*100):0;
+  const cards='<div class="grid4" style="margin-bottom:24px">'+
+    statCard(total.toLocaleString(),'Total Requests','Last 5000 log lines','var(--accent)','bar-chart-2')+
+    statCard(stats.requests_2xx.toLocaleString(),'2xx Success',pct(stats.requests_2xx)+'% of traffic','var(--green)','check-circle')+
+    statCard(stats.requests_4xx.toLocaleString(),'4xx Errors',pct(stats.requests_4xx)+'% of traffic','var(--yellow)','alert-triangle')+
+    statCard(stats.requests_5xx.toLocaleString(),'5xx Errors',pct(stats.requests_5xx)+'% of traffic','var(--red)','x-circle')+
+  '</div>';
+  const maxPath=stats.top_paths&&stats.top_paths.length?stats.top_paths[0].count:1;
+  const pathsHtml=stats.top_paths&&stats.top_paths.length?
+    stats.top_paths.map(p=>'<div class="bar-row">'+
+      '<span style="min-width:200px;color:var(--muted2);font-family:var(--mono);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(p.path)+'</span>'+
+      '<div class="bar-track"><div class="bar-fill" style="width:'+Math.round(p.count/maxPath*100)+'%;background:var(--accent)"></div></div>'+
+      '<span style="min-width:40px;text-align:right;color:var(--muted2)">'+p.count+'</span></div>').join(''):
+    '<div style="color:var(--muted);font-size:13px;padding:20px 0">No data yet</div>';
+  const maxIP=stats.top_ips&&stats.top_ips.length?stats.top_ips[0].count:1;
+  const ipsHtml=stats.top_ips&&stats.top_ips.length?
+    stats.top_ips.map(ip=>'<div class="bar-row">'+
+      '<span style="min-width:140px;color:var(--muted2);font-family:var(--mono);font-size:11px">'+ip.ip+'</span>'+
+      '<div class="bar-track"><div class="bar-fill" style="width:'+Math.round(ip.count/maxIP*100)+'%;background:var(--purple)"></div></div>'+
+      '<span style="min-width:40px;text-align:right;color:var(--muted2)">'+ip.count+'</span></div>').join(''):
+    '<div style="color:var(--muted);font-size:13px;padding:20px 0">No data yet</div>';
+  const codes=stats.status_codes||{};
+  const codeRows=Object.entries(codes).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([code,count])=>
+    '<tr><td><span style="color:'+statusColor(code)+';font-family:var(--mono);font-weight:600">'+code+'</span></td>'+
+    '<td style="text-align:right">'+count+'</td><td style="text-align:right;color:var(--muted)">'+pct(count)+'%</td></tr>').join('');
+  const activeSites=stats.active_sites||[];
+  const sitesRows=activeSites.length?activeSites.map(s=>
+    '<tr><td><span style="font-family:var(--mono);font-size:12px">'+s.name+'</span></td>'+
+    '<td><span style="color:var(--accent2)">'+escHtml(s.server_name||'—')+'</span></td>'+
+    '<td>'+escHtml(s.upstream||'—')+'</td><td>'+escHtml(s.port||'80')+'</td>'+
+    '<td>'+(s.enabled?'<span class="tag tag-active">enabled</span>':'<span class="tag tag-stopped">disabled</span>')+'</td></tr>').join(''):
+    '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px">No sites configured</td></tr>';
+  const recentRows=(stats.recent_requests||[]).slice(0,15).map(r=>
+    '<tr><td style="font-family:var(--mono);font-size:11px;color:var(--muted)">'+r.ip+'</td>'+
+    '<td><span style="color:var(--blue);font-weight:600;font-size:11px">'+r.method+'</span></td>'+
+    '<td style="font-family:var(--mono);font-size:11px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.path)+'</td>'+
+    '<td><span style="color:'+statusColor(r.status)+';font-weight:700;font-family:var(--mono)">'+r.status+'</span></td>'+
+    '<td style="color:var(--muted);font-size:11px">'+r.size+' B</td></tr>').join('');
+  return cards+
+    '<div class="grid2" style="margin-bottom:24px">'+
+      '<div class="card"><div style="font-weight:600;margin-bottom:16px;font-size:13px">Top Paths</div>'+pathsHtml+'</div>'+
+      '<div class="card"><div style="font-weight:600;margin-bottom:16px;font-size:13px">Top Client IPs</div>'+ipsHtml+
+        '<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">'+
+          '<div style="font-weight:600;margin-bottom:12px;font-size:13px">Status Codes</div>'+
+          '<table class="tbl"><thead><tr><th>Code</th><th style="text-align:right">Count</th><th style="text-align:right">%</th></tr></thead><tbody>'+codeRows+'</tbody></table>'+
+        '</div></div>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:24px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
+        '<div style="font-weight:600;font-size:13px">Active Sites</div>'+
+        '<button class="btn btn-sm" onclick="set({nginxTab:\'sites\'})">Manage →</button></div>'+
+      '<table class="tbl"><thead><tr><th>Config</th><th>Domain</th><th>Upstream</th><th>Port</th><th>Status</th></tr></thead><tbody>'+sitesRows+'</tbody></table>'+
+    '</div>'+
+    '<div class="card">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
+        '<div style="font-weight:600;font-size:13px">Recent Requests</div>'+
+        '<button class="btn btn-sm" onclick="set({nginxTab:\'logs\'})">View Logs →</button></div>'+
+      (recentRows?'<table class="tbl"><thead><tr><th>IP</th><th>Method</th><th>Path</th><th>Status</th><th>Size</th></tr></thead><tbody>'+recentRows+'</tbody></table>':
+        '<div style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center">No recent requests in log</div>')+
+    '</div>';
+}
+function nginxSitesTab(){
+  if(S.editingSite){
+    return'<div>'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">'+
+        '<button class="btn btn-sm" onclick="set({editingSite:null,editingContent:\'\'})">← Back</button>'+
+        '<span style="font-weight:600;font-family:var(--mono)">'+S.editingSite+'</span>'+
+        '<div style="flex:1"></div>'+
+        '<button class="btn btn-sm" onclick="ngxTest()">Test</button>'+
+        '<button class="btn-primary btn-sm" onclick="ngxSaveSite()">Save</button>'+
+      '</div>'+
+      '<textarea class="editor" style="min-height:500px;height:calc(100vh - 280px)" oninput="S.editingContent=this.value">'+escHtml(S.editingContent)+'</textarea>'+
+    '</div>';
+  }
+  if(S.newSiteMode){
+    return'<div>'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">'+
+        '<button class="btn btn-sm" onclick="set({newSiteMode:false})">← Back</button>'+
+        '<span style="font-weight:600">New Site Config</span>'+
+      '</div>'+
+      '<form onsubmit="ngxCreateSite(event)" class="card" style="max-width:600px">'+
+        '<div class="grid2">'+
+          '<div class="fg"><label>Filename *</label><input name="sitename" placeholder="myapp.conf" required></div>'+
+          '<div class="fg"><label>Server Name *</label><input name="server_name" placeholder="app.example.com" required></div>'+
+        '</div>'+
+        '<div class="grid2">'+
+          '<div class="fg"><label>Listen Port</label><input name="port" type="number" value="80"></div>'+
+          '<div class="fg"><label>Upstream (host:port)</label><input name="upstream" placeholder="localhost:3000"></div>'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+          '<button type="button" class="btn" onclick="set({newSiteMode:false})">Cancel</button>'+
+          '<button type="submit" class="btn-primary">Create Site</button>'+
+        '</div>'+
+      '</form></div>';
+  }
+  const sites=S.nginxSites;
+  return'<div>'+
+    '<div style="display:flex;justify-content:flex-end;margin-bottom:16px">'+
+      '<button class="btn-primary btn-sm" onclick="set({newSiteMode:true})">+ New Site</button>'+
+    '</div>'+
+    (sites.length===0?emptyState('globe','No site configs found','New Site','set({newSiteMode:true})'):
+      '<div style="display:grid;gap:8px">'+
+      sites.map(s=>'<div class="card" style="padding:14px 18px">'+
+        '<div style="display:flex;align-items:center;gap:12px">'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+              '<span style="font-weight:600;font-size:13px;font-family:var(--mono)">'+s.name+'</span>'+
+              (s.enabled?'<span class="tag tag-active">enabled</span>':'<span class="tag tag-stopped">disabled</span>')+
+              (s.vessel_deployment?'<button class="tag tag-imported" title="Open deployment" onclick="event.stopPropagation();set({page:\'deployments\',selectedDeployment:\''+escAttr(s.vessel_deployment)+'\'})" style="border:none;cursor:pointer">'+escHtml(s.vessel_deployment)+'</button>':'')+
+            '</div>'+
+            '<div style="color:var(--muted);font-size:11px;margin-top:3px">'+s.path+'</div>'+
+          '</div>'+
+          '<div style="display:flex;gap:5px;flex-shrink:0">'+
+            '<button class="btn btn-sm" onclick="ngxEditSite(\''+s.name+'\')">Edit</button>'+
+            (s.enabled?
+              '<button class="btn btn-sm" onclick="ngxToggleSite(\''+s.name+'\',true)">Disable</button>':
+              '<button class="btn-success btn-sm" onclick="ngxToggleSite(\''+s.name+'\',false)">Enable</button>')+
+            '<button class="btn-danger btn-sm" onclick="ngxDeleteSite(\''+s.name+'\')">Delete</button>'+
+          '</div>'+
+        '</div></div>').join('')+
+      '</div>')+
+  '</div>';
+}
+function nginxConfigTab(){
+  return'<div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+      '<span style="font-size:12px;color:var(--muted);font-family:var(--mono)">/etc/nginx/nginx.conf</span>'+
+      '<div style="display:flex;gap:8px">'+
+        '<button class="btn btn-sm" onclick="ngxTest()">Test Config</button>'+
+        '<button class="btn-primary btn-sm" onclick="ngxSaveMainConfig()">Save</button>'+
+      '</div></div>'+
+    '<textarea class="editor" style="height:calc(100vh - 280px)" oninput="S.nginxMainConfig=this.value">'+escHtml(S.nginxMainConfig)+'</textarea>'+
+  '</div>';
+}
+function nginxLogsTab(){
+  return'<div>'+
+    '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+
+      '<button class="btn btn-sm" onclick="openNginxLogs(\'access\')" style="display:flex;align-items:center;gap:5px">'+ico('play',11)+' Stream Access</button>'+
+      '<button class="btn btn-sm" onclick="openNginxLogs(\'error\')" style="display:flex;align-items:center;gap:5px">'+ico('play',11)+' Stream Error</button>'+
+      '<button class="btn btn-sm" onclick="loadNginxLogs(\'access\')">Load Access (200 lines)</button>'+
+      '<button class="btn btn-sm" onclick="loadNginxLogs(\'error\')">Load Error (200 lines)</button>'+
+    '</div>'+
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">'+
+      '<pre style="padding:16px;font-size:12px;font-family:var(--mono);height:calc(100vh - 320px);overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:#a8b4c8;line-height:1.6">'+
+        (S.nginxLogs.length?escHtml(S.nginxLogs.join('\n')):'Click a button above to load logs')+
+      '</pre></div></div>';
+}
+// ── Logs page ─────────────────────────────────────────────────────────────────
+function pageLogs(){
+  const t=S.logsTarget;
+  return'<div style="height:calc(100vh - 56px);display:flex;flex-direction:column">'+
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-shrink:0">'+
+      '<button class="btn btn-sm" onclick="nav(\'containers\')">← Back</button>'+
+      '<h1 style="font-size:18px;font-weight:700">'+(t?t.name:'Logs')+'</h1>'+
+      '<span style="margin-left:auto;font-size:11px;color:var(--green);display:flex;align-items:center;gap:5px">'+
+        '<span class="dot pulse" style="background:var(--green)"></span>live</span>'+
+    '</div>'+
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;flex:1;display:flex;flex-direction:column">'+
+      '<div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">'+
+        '<span style="font-size:11px;color:var(--muted);font-family:var(--mono)">stdout / stderr</span>'+
+        '<button class="btn btn-xs" onclick="S.logs=\'\';const el=document.getElementById(\'logbox\');if(el)el.textContent=\'\'">Clear</button>'+
+      '</div>'+
+      '<pre id="logbox" style="padding:16px;font-size:12px;font-family:var(--mono);flex:1;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:#a8b4c8;line-height:1.7;margin:0">'+
+        (S.logs||'Connecting…')+'</pre>'+
+    '</div></div>';
+}
+// ── Settings page ─────────────────────────────────────────────────────────────
+function pageSettings(){
+  function row(l,v){return'<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted);font-size:13px">'+l+'</span><code style="font-family:var(--mono);font-size:12px;color:var(--accent2)">'+v+'</code></div>'}
+  const upd=S.updateLog!==undefined;
+  const updateCard='<div class="card" style="margin-bottom:24px">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'+
+      '<div>'+
+        '<div style="font-weight:700;font-size:15px">Update Vessel</div>'+
+        '<div style="font-size:12px;color:var(--muted);margin-top:3px">Pulls the latest release binary from GitHub and restarts the service</div>'+
+      '</div>'+
+      '<button class="btn-primary btn-sm" onclick="startUpdate()" style="display:flex;align-items:center;gap:6px"'+(S.updating?' disabled':'')+'>'+
+        (S.updating?ico('loader',13)+' Updating…':ico('refresh-cw',13)+' Update Now')+'</button>'+
+    '</div>'+
+    (S.updateLog!==null&&S.updateLog!==undefined?
+      '<pre id="update-log" style="font-family:var(--mono);font-size:12px;background:#0d1117;border:1px solid var(--border2);border-radius:var(--r);padding:14px;max-height:260px;overflow-y:auto;color:#a8b4c8;line-height:1.6;white-space:pre-wrap;word-break:break-all">'+escHtml(S.updateLog)+'</pre>':'')+
+  '</div>';
+  return'<div>'+
+    '<div style="margin-bottom:24px"><h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px">Settings</h1></div>'+
+    updateCard+
+    '<div class="card" style="margin-bottom:24px">'+
+      row('Signed in as',escHtml((S.currentUser&&S.currentUser.username)||''))+
+      row('Role',escHtml((S.currentUser&&S.currentUser.role)||''))+
+      row('Version',escHtml(S.serverVersion||'—'))+row('Data directory','/var/lib/vessel')+
+      row('Config file','/etc/vessel/config.yaml')+row('UI port','4800')+
+      '<div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);display:flex;gap:10px">'+
+        '<a href="https://github.com/Yash121l/Vessel" target="_blank" class="btn btn-sm" style="display:flex;align-items:center;gap:6px">'+ico('github',13)+' View on GitHub</a>'+
+      '</div>'+
+    '</div>'+
+    (canAdmin()?usersPanel():'')+
+  '</div>';
+}
+async function startUpdate(){
+  if(S.updating)return;
+  if(!confirm('Update Vessel to the latest release?\n\nThe service will restart automatically. You may need to refresh the page after ~10 seconds.'))return;
+  set({updating:true,updateLog:'Connecting…\n'});
+  const es=new EventSource(API+'/system/update');
+  es.onmessage=e=>{
+    if(e.data==='__DONE__'){
+      es.close();
+      set({updating:false,updateLog:(S.updateLog||'')+'Done. Refreshing in 8s…\n'});
+      setTimeout(()=>location.reload(),8000);
+      return;
+    }
+    S.updateLog=(S.updateLog||'')+e.data+'\n';
+    const el=document.getElementById('update-log');
+    if(el){el.textContent=S.updateLog;el.scrollTop=el.scrollHeight;}
+  };
+  es.onerror=()=>{
+    es.close();
+    // If the server restarted, the SSE connection will drop — that's expected
+    if(S.updating){
+      set({updating:false,updateLog:(S.updateLog||'')+'Connection closed (service may be restarting).\nRefreshing in 8s…\n'});
+      setTimeout(()=>location.reload(),8000);
+    }
+  };
+}
+function usersPanel(){
+  const roles=['viewer','operator','admin'].concat(S.currentUser&&S.currentUser.role==='owner'?['owner']:[]);
+  const roleOptions=(selected)=>roles.map(r=>'<option value="'+r+'"'+(selected===r?' selected':'')+'>'+r+'</option>').join('');
+  const rows=(S.users||[]).map(u=>{
+    const self=S.currentUser&&u.id===S.currentUser.id;
+    const editable=!self&&(S.currentUser.role==='owner'||u.role!=='owner');
+    return'<tr>'+
+      '<td><span style="font-weight:600">'+escHtml(u.username)+'</span>'+(self?' <span class="tag tag-active">you</span>':'')+'</td>'+
+      '<td>'+(editable?'<select id="role-'+u.id+'" style="width:120px">'+roleOptions(u.role)+'</select>':'<span class="tag tag-imported">'+escHtml(u.role)+'</span>')+'</td>'+
+      '<td style="max-width:220px">'+(editable?'<input id="pw-'+u.id+'" type="password" placeholder="New password" autocomplete="new-password">':'')+'</td>'+
+      '<td style="text-align:right">'+(editable?'<button class="btn btn-sm" onclick="updateUser(\''+u.id+'\')">Save</button> <button class="btn-danger btn-sm" onclick="deleteUser(\''+u.id+'\',\''+escAttr(u.username)+'\')">Delete</button>':'')+'</td>'+
+    '</tr>';
+  }).join('');
+  return'<div class="card">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
+      '<div><div style="font-weight:700;font-size:15px">Users & Permissions</div>'+
+      '<div style="font-size:12px;color:var(--muted);margin-top:3px">Viewer can inspect, operator can deploy/manage apps, admin can manage host settings, owner can manage every role.</div></div>'+
+      '<button class="btn btn-sm" onclick="loadUsers()">Refresh</button></div>'+
+    '<form onsubmit="createUser(event)" style="display:grid;grid-template-columns:1fr 130px 1fr auto;gap:8px;margin-bottom:18px">'+
+      '<input name="username" placeholder="username" autocomplete="off" required>'+
+      '<select name="role">'+roleOptions('viewer')+'</select>'+
+      '<input name="password" type="password" placeholder="temporary password" autocomplete="new-password" required>'+
+      '<button class="btn-primary">Add User</button>'+
+    '</form>'+
+    '<table class="tbl"><thead><tr><th>User</th><th>Role</th><th>Password</th><th></th></tr></thead><tbody>'+
+      (rows||'<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:18px">No users loaded</td></tr>')+
+    '</tbody></table>'+
+  '</div>';
+}
+// ── Boot ──────────────────────────────────────────────────────────────────────
+render();boot();
+</script>
+</body>
+</html>

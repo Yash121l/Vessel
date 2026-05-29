@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vessel Project Plan</title>
+  <style>
+    *{box-sizing:border-box}
+    :root{
+      --bg:#eef3f1;
+      --ink:#0d1b1a;
+      --muted:#4b5d5a;
+      --panel:#fbfcf9;
+      --line:#d7e1dd;
+      --accent:#0f766e;
+      --accent-2:#164e63;
+      --warm:#f4e7c8;
+      --good:#e3f4ea;
+      --warn:#fff3d6;
+      --shadow:0 18px 60px rgba(13,27,26,.08);
+    }
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      background:
+        radial-gradient(circle at top left, rgba(15,118,110,.10), transparent 32%),
+        linear-gradient(180deg, #f4f7f5 0%, var(--bg) 100%);
+      color:var(--ink);
+      font:16px/1.6 "Iowan Old Style","Palatino Linotype","Book Antiqua",Palatino,Georgia,serif;
+    }
+    a{color:inherit}
+    code{
+      padding:.1rem .35rem;
+      border-radius:999px;
+      background:rgba(22,78,99,.08);
+      font:600 .86rem/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    .wrap{max-width:1160px;margin:0 auto;padding:0 24px}
+    .nav{
+      position:sticky;
+      top:0;
+      z-index:10;
+      backdrop-filter:blur(14px);
+      background:rgba(244,247,245,.82);
+      border-bottom:1px solid rgba(13,27,26,.08);
+    }
+    .nav .wrap{
+      min-height:70px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      text-decoration:none;
+      font:700 1rem/1.2 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      letter-spacing:.02em;
+    }
+    .mark{
+      width:38px;
+      height:38px;
+      border-radius:12px;
+      display:grid;
+      place-items:center;
+      background:linear-gradient(135deg,var(--accent),var(--accent-2));
+      color:#fff;
+      box-shadow:var(--shadow);
+    }
+    .nav-links{
+      display:flex;
+      align-items:center;
+      gap:18px;
+      font:600 .9rem/1.2 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      color:var(--muted);
+    }
+    .button{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:42px;
+      padding:0 16px;
+      border-radius:999px;
+      border:1px solid transparent;
+      background:var(--ink);
+      color:#fff;
+      text-decoration:none;
+      font:700 .88rem/1 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    .button.ghost{
+      background:transparent;
+      color:var(--ink);
+      border-color:rgba(13,27,26,.12);
+    }
+    .hero{padding:82px 0 42px}
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid rgba(13,27,26,.08);
+      background:rgba(251,252,249,.88);
+      font:700 .76rem/1 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      color:var(--muted);
+    }
+    .eyebrow::before{
+      content:"";
+      width:9px;
+      height:9px;
+      border-radius:50%;
+      background:var(--accent);
+      box-shadow:0 0 0 5px rgba(15,118,110,.12);
+    }
+    h1{
+      max-width:940px;
+      margin:18px 0 18px;
+      font-size:clamp(3.1rem,7vw,6.8rem);
+      line-height:.93;
+      letter-spacing:-.05em;
+      font-weight:700;
+    }
+    .lead{
+      max-width:720px;
+      margin:0;
+      color:var(--muted);
+      font-size:1.15rem;
+    }
+    .hero-actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:12px;
+      margin-top:28px;
+    }
+    .snapshot{
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:14px;
+      margin-top:36px;
+    }
+    .stat{
+      padding:18px;
+      border:1px solid var(--line);
+      border-radius:22px;
+      background:rgba(251,252,249,.88);
+      box-shadow:var(--shadow);
+    }
+    .stat strong{
+      display:block;
+      font:700 1.8rem/1 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    .stat span{
+      display:block;
+      margin-top:8px;
+      color:var(--muted);
+      font:600 .82rem/1.4 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+    }
+    .section{padding:44px 0}
+    .section-head{
+      display:flex;
+      align-items:end;
+      justify-content:space-between;
+      gap:20px;
+      margin-bottom:22px;
+    }
+    h2{
+      margin:0;
+      font-size:clamp(2rem,4vw,3.2rem);
+      line-height:1;
+      letter-spacing:-.04em;
+    }
+    .section-head p,.muted{margin:0;color:var(--muted)}
+    .feature-grid,
+    .phase-grid,
+    .milestone-grid{
+      display:grid;
+      gap:14px;
+    }
+    .feature-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .phase-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .milestone-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .card{
+      padding:24px;
+      border-radius:24px;
+      border:1px solid var(--line);
+      background:var(--panel);
+      box-shadow:var(--shadow);
+    }
+    .card h3{
+      margin:0 0 10px;
+      font:700 1.1rem/1.2 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    .card p{margin:0;color:var(--muted)}
+    .callout{
+      display:grid;
+      grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);
+      gap:18px;
+    }
+    .focus{
+      background:linear-gradient(180deg,rgba(15,118,110,.08),rgba(15,118,110,.03));
+      border-color:rgba(15,118,110,.18);
+    }
+    .side-note{
+      background:linear-gradient(180deg,rgba(244,231,200,.55),rgba(255,255,255,.8));
+    }
+    .list{
+      margin:14px 0 0;
+      padding:0;
+      list-style:none;
+    }
+    .list li{
+      position:relative;
+      padding-left:18px;
+      margin-top:10px;
+      color:var(--muted);
+    }
+    .list li::before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:.68em;
+      width:7px;
+      height:7px;
+      border-radius:50%;
+      background:var(--accent);
+    }
+    .phase{
+      position:relative;
+      overflow:hidden;
+    }
+    .phase small,
+    .milestone small{
+      display:block;
+      margin-bottom:10px;
+      color:var(--muted);
+      font:700 .76rem/1 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      letter-spacing:.1em;
+      text-transform:uppercase;
+    }
+    .phase p,
+    .milestone p{margin:0;color:var(--muted)}
+    .phase strong,
+    .milestone strong{
+      display:block;
+      margin-bottom:10px;
+      font:700 1.28rem/1.1 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    .phase:nth-child(1){background:linear-gradient(180deg,rgba(227,244,234,.72),#fbfcf9)}
+    .phase:nth-child(2){background:linear-gradient(180deg,rgba(255,243,214,.8),#fbfcf9)}
+    .phase:nth-child(3){background:linear-gradient(180deg,rgba(222,241,247,.75),#fbfcf9)}
+    .phase:nth-child(4){background:linear-gradient(180deg,rgba(244,231,200,.8),#fbfcf9)}
+    .table{
+      width:100%;
+      border-collapse:collapse;
+      overflow:hidden;
+      border-radius:22px;
+      box-shadow:var(--shadow);
+      border:1px solid var(--line);
+      background:var(--panel);
+    }
+    .table th,.table td{
+      padding:16px 18px;
+      vertical-align:top;
+      border-bottom:1px solid var(--line);
+      text-align:left;
+    }
+    .table th{
+      font:700 .78rem/1 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:var(--muted);
+      background:rgba(13,27,26,.03);
+    }
+    .table tr:last-child td{border-bottom:none}
+    .tag{
+      display:inline-flex;
+      align-items:center;
+      padding:6px 10px;
+      border-radius:999px;
+      font:700 .72rem/1 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
+    .tag.now{background:var(--good);color:#17603c}
+    .tag.next{background:var(--warn);color:#915b00}
+    .tag.later{background:rgba(22,78,99,.10);color:var(--accent-2)}
+    .footer{
+      padding:34px 0 56px;
+      color:var(--muted);
+      font:600 .88rem/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    @media (max-width:980px){
+      .snapshot,.feature-grid,.phase-grid,.milestone-grid,.callout{grid-template-columns:1fr}
+      .nav .wrap,.section-head{display:block}
+      .nav-links{margin-top:14px;flex-wrap:wrap}
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap">
+      <a class="brand" href="index.html">
+        <span class="mark">V</span>
+        <span>Vessel</span>
+      </a>
+      <div class="nav-links">
+        <a href="#next-step">Next Step</a>
+        <a href="#roadmap">Roadmap</a>
+        <a href="#milestones">Milestones</a>
+        <a class="button ghost" href="index.html">Back to Site</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <span class="eyebrow">Project plan</span>
+        <h1>Make Vessel trustworthy before making it bigger.</h1>
+        <p class="lead">As of May 28, 2026, Vessel already behaves like a real single-node control plane: it deploys curated apps, imports running containers, manages nginx, exposes a web UI, and ships a remote YAML catalog. The next step should harden execution so every later feature sits on a safer base.</p>
+        <div class="hero-actions">
+          <a class="button" href="#next-step">Read the next step</a>
+          <a class="button ghost" href="#roadmap">View full roadmap</a>
+        </div>
+        <div class="snapshot" aria-label="Project snapshot">
+          <div class="stat">
+            <strong>50+</strong>
+            <span>bundled YAML templates</span>
+          </div>
+          <div class="stat">
+            <strong>1</strong>
+            <span>embedded Go binary + SQLite runtime</span>
+          </div>
+          <div class="stat">
+            <strong>4</strong>
+            <span>major surfaces: deploy, import, nginx, users</span>
+          </div>
+          <div class="stat">
+            <strong>Tests pass</strong>
+            <span><code>go test ./...</code> is green locally</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <h2>Current state</h2>
+          </div>
+          <p>This summary is grounded in the codebase, not in aspirational docs.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="card">
+            <h3>Control plane already exists</h3>
+            <p><code>internal/server/routes.go</code> exposes auth, RBAC, deployments, Docker import, compose stacks, settings, self-update, system helpers, and a full nginx management surface.</p>
+          </article>
+          <article class="card">
+            <h3>Catalog architecture is solid</h3>
+            <p><code>internal/registry/template.go</code> loads embedded YAML, local overrides, and a remote GitHub Pages catalog, which is the right shape for low-friction template growth.</p>
+          </article>
+          <article class="card">
+            <h3>Frontend is functional but concentrated</h3>
+            <p><code>internal/server/ui.go</code> contains a large inline SPA. That keeps shipping simple, but it slows iteration, review, and UI-specific testing.</p>
+          </article>
+          <article class="card">
+            <h3>Deployment behavior is synchronous</h3>
+            <p><code>internal/deployment/engine.go</code> performs pull, up, proxy configuration, and certificate work directly in request-driven flows with coarse status updates like <code>deploying</code> and <code>error</code>.</p>
+          </article>
+          <article class="card">
+            <h3>Operational truth needs cleanup</h3>
+            <p>The README still references Caddy in places, while the active implementation clearly centers on nginx management. That mismatch will confuse operators and contributors.</p>
+          </article>
+          <article class="card">
+            <h3>Quality baseline is usable</h3>
+            <p>Server, store, registry, nginx, and deployment packages already have tests. That is enough to support a focused hardening milestone without first rebuilding the project structure.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="next-step" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <h2>Recommended next step</h2>
+          </div>
+          <p>Build an operations layer for long-running actions.</p>
+        </div>
+        <div class="callout">
+          <article class="card focus">
+            <h3>Scope the next milestone around reliable execution</h3>
+            <p>Introduce a persisted operation model for deploy, update, remove, import, bootstrap, nginx actions, and self-update. Treat each action as a tracked workflow with explicit steps, logs, timestamps, actor identity, and final outcome.</p>
+            <ul class="list">
+              <li>Add an <code>operations</code> table plus step records so the backend can report more than a single deployment status string.</li>
+              <li>Move long-running work out of fragile request-response handling into background execution with polling or streaming endpoints.</li>
+              <li>Wrap deployment steps with cleanup hooks so failed first-time deploys can remove partial compose files, revert DB state, or clearly mark what remains.</li>
+              <li>Expose operation history in the UI so users can answer: what ran, who started it, where it failed, and whether retry is safe.</li>
+              <li>Write failure-path tests for pull errors, compose up failures, nginx certificate failures, and cleanup behavior.</li>
+            </ul>
+          </article>
+          <aside class="card side-note">
+            <h3>Why this before more features</h3>
+            <ul class="list">
+              <li>Vessel is already broad enough. The risk is operator trust, not lack of endpoints.</li>
+              <li>Every future feature, including backups, multi-user audit, and remote execution, depends on durable operation tracking.</li>
+              <li>The code already has the primitives. What is missing is orchestration, visibility, and safe failure handling.</li>
+            </ul>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section id="roadmap" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <h2>Roadmap</h2>
+          </div>
+          <p>Ordered by leverage, not by novelty.</p>
+        </div>
+        <div class="phase-grid">
+          <article class="card phase">
+            <small>Phase 1</small>
+            <strong>Trust the control plane</strong>
+            <p>Ship the operations layer, tighten rollback and cleanup rules, add step-level logs, and align docs with the real nginx-based runtime. Goal: make deploy and update actions explainable and safe to retry.</p>
+          </article>
+          <article class="card phase">
+            <small>Phase 2</small>
+            <strong>Make state portable</strong>
+            <p>Add backup and restore for the SQLite database, deployment directories, nginx config, and local templates. Goal: let operators move or recover a server without reconstructing it manually.</p>
+          </article>
+          <article class="card phase">
+            <small>Phase 3</small>
+            <strong>Unpack the frontend</strong>
+            <p>Extract the inline SPA out of <code>internal/server/ui.go</code> into versioned assets or a small frontend workspace, then add UI tests around auth, deploy flows, and operation history. Goal: speed iteration without losing single-binary shipping.</p>
+          </article>
+          <article class="card phase">
+            <small>Phase 4</small>
+            <strong>Expand product depth</strong>
+            <p>Improve template validation, add release notes and update channels, add audit-grade user activity, and consider multi-host or remote-agent work only after single-node reliability is boringly good.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="milestones" class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <h2>Milestones</h2>
+          </div>
+          <p>Concrete checkpoints for delivery.</p>
+        </div>
+        <div class="milestone-grid">
+          <article class="card milestone">
+            <small>M1</small>
+            <strong>Operation records exist</strong>
+            <p>Backend stores operation state, step list, initiator, timestamps, and output pointers. API can list and inspect operations for a deployment or system action.</p>
+          </article>
+          <article class="card milestone">
+            <small>M2</small>
+            <strong>Deployments fail cleanly</strong>
+            <p>Failed deploys leave either a fully running app or an explainable failed operation with consistent disk and DB state.</p>
+          </article>
+          <article class="card milestone">
+            <small>M3</small>
+            <strong>Recovery story is real</strong>
+            <p>Backups can be created, validated, and restored on a fresh machine using one documented path.</p>
+          </article>
+          <article class="card milestone">
+            <small>M4</small>
+            <strong>Frontend is maintainable</strong>
+            <p>The UI is extracted from the giant inline string, and the release process still produces a simple artifact story.</p>
+          </article>
+          <article class="card milestone">
+            <small>M5</small>
+            <strong>Docs match implementation</strong>
+            <p>README, install flow, and GitHub Pages docs describe the real stack, actual roles, and the new operations workflow.</p>
+          </article>
+          <article class="card milestone">
+            <small>M6</small>
+            <strong>Expansion work starts from strength</strong>
+            <p>Only after M1 through M5 should the project spend time on broader catalog growth, deeper team features, or multi-host ambitions.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <div>
+            <h2>Execution order</h2>
+          </div>
+          <p>A practical sequence for implementation.</p>
+        </div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Priority</th>
+              <th>Work item</th>
+              <th>Outcome</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="tag now">Now</span></td>
+              <td>Design the operation schema and backend interfaces.</td>
+              <td>One place to model deploy, update, remove, import, nginx, bootstrap, and self-update actions.</td>
+            </tr>
+            <tr>
+              <td><span class="tag now">Now</span></td>
+              <td>Instrument <code>deployment.Engine</code> and nginx actions with named steps and cleanup policies.</td>
+              <td>Failure becomes diagnosable and retryable instead of opaque.</td>
+            </tr>
+            <tr>
+              <td><span class="tag next">Next</span></td>
+              <td>Add operation history views and live progress in the embedded UI.</td>
+              <td>Operators can see in-progress and past work without reading backend logs.</td>
+            </tr>
+            <tr>
+              <td><span class="tag next">Next</span></td>
+              <td>Align README and docs with nginx, current APIs, and the real product surface.</td>
+              <td>Docs stop fighting the codebase.</td>
+            </tr>
+            <tr>
+              <td><span class="tag later">Later</span></td>
+              <td>Build backup/restore and frontend extraction on top of the operations foundation.</td>
+              <td>New features reuse the same execution and reporting model.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      Vessel plan snapshot for May 28, 2026. This page is intended to be revised as the repository changes, not treated as a static promise.
+    </div>
+  </footer>
+</body>
+</html>

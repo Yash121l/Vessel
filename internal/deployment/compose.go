@@ -86,7 +86,7 @@ func GenerateCompose(tmpl *registry.AppTemplate, d *store.Deployment, skipServic
 		},
 	}
 
-	// Ports are bound to localhost when a domain is configured so Caddy can
+	// Ports are bound to localhost when a domain is configured so nginx can
 	// reach the app without exposing the container port publicly.
 	for _, p := range tmpl.Ports {
 		proto := p.Protocol

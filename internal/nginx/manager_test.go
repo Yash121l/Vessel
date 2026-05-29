@@ -1,8 +1,10 @@
 package nginx
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -11,8 +13,15 @@ func TestCreateSiteForDeployment(t *testing.T) {
 	// Set up a temporary nginx config root with a sites-available directory.
 	tmpDir := t.TempDir()
 	sitesAvailable := filepath.Join(tmpDir, "sites-available")
+	sitesEnabled := filepath.Join(tmpDir, "sites-enabled")
 	if err := os.MkdirAll(sitesAvailable, 0755); err != nil {
 		t.Fatalf("failed to create sites-available: %v", err)
+	}
+	if err := os.MkdirAll(sitesEnabled, 0755); err != nil {
+		t.Fatalf("failed to create sites-enabled: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "nginx.conf"), []byte("include /etc/nginx/sites-enabled/*;"), 0644); err != nil {
+		t.Fatalf("failed to create nginx.conf: %v", err)
 	}
 
 	m := &Manager{configRoot: tmpDir}
@@ -91,6 +100,58 @@ func TestBuildSiteConfigUsesExplicitUpstream(t *testing.T) {
 	content := buildSiteConfig("app.example.com", 8080, "unix:/run/app.sock")
 	if !strings.Contains(content, "proxy_pass http://unix:/run/app.sock;") {
 		t.Fatalf("buildSiteConfig did not use explicit upstream: %q", content)
+	}
+}
+
+func TestSaveSiteDefaultsToConfDWhenSitesLayoutMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	confD := filepath.Join(tmpDir, "conf.d")
+	if err := os.MkdirAll(confD, 0755); err != nil {
+		t.Fatalf("failed to create conf.d: %v", err)
+	}
+
+	m := &Manager{configRoot: tmpDir}
+	if err := m.SaveSite("demo", "server {}"); err != nil {
+		t.Fatalf("SaveSite() error = %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(confD, "demo.conf"))
+	if err != nil {
+		t.Fatalf("failed to read conf.d site file: %v", err)
+	}
+	if string(data) != "server {}" {
+		t.Fatalf("saved site content = %q, want %q", string(data), "server {}")
+	}
+}
+
+func TestRestartFallbackStopsThenStartsNginx(t *testing.T) {
+	origRunCommand := runCommand
+	defer func() { runCommand = origRunCommand }()
+
+	var calls []string
+	runCommand = func(name string, args ...string) error {
+		call := name
+		if len(args) > 0 {
+			call += " " + strings.Join(args, " ")
+		}
+		calls = append(calls, call)
+		if name == "systemctl" && len(args) == 2 && args[0] == "restart" && args[1] == "nginx" {
+			return fmt.Errorf("systemctl unavailable")
+		}
+		return nil
+	}
+
+	m := &Manager{}
+	if err := m.Restart(); err != nil {
+		t.Fatalf("Restart() error = %v", err)
+	}
+
+	want := []string{
+		"systemctl restart nginx",
+		"nginx -s stop",
+		"nginx",
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("Restart() calls = %#v, want %#v", calls, want)
 	}
 }
 

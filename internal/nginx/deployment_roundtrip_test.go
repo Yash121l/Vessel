@@ -77,8 +77,15 @@ func TestVesselDeploymentCommentRoundTripProperty(t *testing.T) {
 	// Set up a temporary nginx config root with a sites-available directory.
 	tmpDir := t.TempDir()
 	sitesAvailable := filepath.Join(tmpDir, "sites-available")
+	sitesEnabled := filepath.Join(tmpDir, "sites-enabled")
 	if err := os.MkdirAll(sitesAvailable, 0755); err != nil {
 		t.Fatalf("failed to create sites-available: %v", err)
+	}
+	if err := os.MkdirAll(sitesEnabled, 0755); err != nil {
+		t.Fatalf("failed to create sites-enabled: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "nginx.conf"), []byte("include /etc/nginx/sites-enabled/*;"), 0644); err != nil {
+		t.Fatalf("failed to create nginx.conf: %v", err)
 	}
 	m := &Manager{configRoot: tmpDir}
 
@@ -130,8 +137,15 @@ func TestVesselDeploymentCommentRoundTripProperty(t *testing.T) {
 func TestVesselDeploymentCommentFirstLineProperty(t *testing.T) {
 	tmpDir := t.TempDir()
 	sitesAvailable := filepath.Join(tmpDir, "sites-available")
+	sitesEnabled := filepath.Join(tmpDir, "sites-enabled")
 	if err := os.MkdirAll(sitesAvailable, 0755); err != nil {
 		t.Fatalf("failed to create sites-available: %v", err)
+	}
+	if err := os.MkdirAll(sitesEnabled, 0755); err != nil {
+		t.Fatalf("failed to create sites-enabled: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "nginx.conf"), []byte("include /etc/nginx/sites-enabled/*;"), 0644); err != nil {
+		t.Fatalf("failed to create nginx.conf: %v", err)
 	}
 	m := &Manager{configRoot: tmpDir}
 
@@ -190,8 +204,15 @@ func TestVesselDeploymentCommentFirstLineProperty(t *testing.T) {
 func TestVesselDeploymentExtractRoundTripProperty(t *testing.T) {
 	tmpDir := t.TempDir()
 	sitesAvailable := filepath.Join(tmpDir, "sites-available")
+	sitesEnabled := filepath.Join(tmpDir, "sites-enabled")
 	if err := os.MkdirAll(sitesAvailable, 0755); err != nil {
 		t.Fatalf("failed to create sites-available: %v", err)
+	}
+	if err := os.MkdirAll(sitesEnabled, 0755); err != nil {
+		t.Fatalf("failed to create sites-enabled: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "nginx.conf"), []byte("include /etc/nginx/sites-enabled/*;"), 0644); err != nil {
+		t.Fatalf("failed to create nginx.conf: %v", err)
 	}
 	m := &Manager{configRoot: tmpDir}
 
@@ -265,7 +286,7 @@ func TestVesselDeploymentCommentSpecialCharacters(t *testing.T) {
 		// excluded here. extractVesselDeployment trims the extracted value,
 		// so "  leading spaces" would extract as "leading spaces" — the
 		// round-trip only holds for names that are already trimmed.
-		"a", // single character
+		"a",                     // single character
 		strings.Repeat("x", 60), // long name
 		"unicode-café",
 		"日本語",
@@ -274,8 +295,15 @@ func TestVesselDeploymentCommentSpecialCharacters(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	sitesAvailable := filepath.Join(tmpDir, "sites-available")
+	sitesEnabled := filepath.Join(tmpDir, "sites-enabled")
 	if err := os.MkdirAll(sitesAvailable, 0755); err != nil {
 		t.Fatalf("failed to create sites-available: %v", err)
+	}
+	if err := os.MkdirAll(sitesEnabled, 0755); err != nil {
+		t.Fatalf("failed to create sites-enabled: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "nginx.conf"), []byte("include /etc/nginx/sites-enabled/*;"), 0644); err != nil {
+		t.Fatalf("failed to create nginx.conf: %v", err)
 	}
 	m := &Manager{configRoot: tmpDir}
 

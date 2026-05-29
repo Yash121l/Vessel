@@ -23,13 +23,15 @@ routes are protected after setup.
 
 Vessel is an operating layer for self-hosted apps on a VPS. It:
 
-- Bootstraps your server (Docker, Caddy, firewall)
+- Bootstraps your server (Docker, nginx, firewall)
 - Deploys apps from curated templates with one click
 - Pulls a public template catalog so new templates can be used without a binary upgrade
 - Generates Docker Compose files automatically
-- Configures Caddy reverse proxy with automatic HTTPS
+- Configures nginx reverse proxy routes and certificates for domain-based apps
 - Streams live logs from any deployment
 - Manages start/stop/restart/update lifecycle
+- Tracks long-running operations with step-level history
+- Creates full backup archives and restores them with the CLI
 - Imports and monitors existing Docker containers
 - Provides a small role-based user system for teams sharing one VPS
 
@@ -74,13 +76,15 @@ vessel/
 │   ├── deployment/
 │   │   ├── compose.go          # Docker Compose file generation
 │   │   └── engine.go           # Deploy/start/stop/update/logs
-│   ├── proxy/
-│   │   └── manager.go          # Caddy config generation + reload
-│   ├── nginx/                  # Advanced/experimental host nginx inspection
+│   ├── backup/                 # Full backup / restore archive support
+│   ├── nginx/                  # Host nginx management and proxy config
+│   ├── operations/             # Background operation runner + step logging
+│   ├── proxy/                  # Legacy Caddy helper kept for compatibility
 │   └── server/
 │       ├── server.go           # HTTP server setup + graceful shutdown
 │       ├── routes.go           # REST API handlers
-│       └── ui.go               # Embedded single-page UI
+│       ├── ui.go               # Embedded UI loader
+│       └── ui/                 # Embedded single-page app source
 ├── internal/registry/templates/ # Single source for app YAML templates
 │   ├── metabase.yaml
 │   ├── n8n.yaml
@@ -123,6 +127,8 @@ All endpoints are under `/api/v1`.
 | `POST` | `/login` | Start a user session |
 | `POST` | `/logout` | End the current user session |
 | `GET` | `/me` | Get the current signed-in user |
+| `GET` | `/operations` | List recent tracked operations |
+| `GET` | `/operations/:id` | Get one operation with step history |
 | `GET` | `/users` | List users (admin/owner) |
 | `POST` | `/users` | Create a user (admin/owner) |
 | `PUT` | `/users/:id` | Update a role or password (admin/owner) |
@@ -136,10 +142,16 @@ All endpoints are under `/api/v1`.
 | `POST` | `/deployments/:id/restart` | Restart a deployment |
 | `POST` | `/deployments/:id/update` | Pull latest images and recreate |
 | `GET` | `/deployments/:id/logs` | Stream logs (SSE) |
+| `GET` | `/system/backups` | List local backup archives |
+| `POST` | `/system/backups` | Create a new backup archive |
 | `GET` | `/health` | Health check |
 
 All endpoints except `/setup`, `/login`, and `/health` require a user session
 cookie or a bearer token matching the current session token.
+
+Deployment and backup creation endpoints now return a tracked operation object.
+The UI follows these operations until they succeed or fail and records the
+step-level history under `/operations`.
 
 ### Roles
 
@@ -205,6 +217,12 @@ When run with `--debug`:
 ## Development
 
 ```bash
+# Create a full runtime backup
+./vessel backup
+
+# Restore a backup onto a fresh machine
+./vessel restore /var/lib/vessel/backups/vessel-backup-YYYYMMDD-HHMMSS.tar.gz
+
 # Build
 make build
 
@@ -228,16 +246,16 @@ make help
 ```
 /var/lib/vessel/
 ├── vessel.db              # SQLite metadata
+├── backups/               # Generated backup archives
 ├── deployments/
 │   └── my-n8n/
 │       ├── docker-compose.yml
 │       └── .env
 ├── templates/             # Custom YAML templates (optional)
-└── caddy/
-    ├── Caddyfile          # Main Caddy config
-    └── sites/
-        └── n8n_example_com.caddy
 ```
+
+Nginx configuration stays in the host nginx tree, typically under `/etc/nginx`.
+Backups include the Vessel data directory, config file, and nginx config tree.
 
 ---
 
@@ -245,16 +263,16 @@ make help
 
 Vessel's first milestone is reliable single-server app deployment:
 
-- Caddy is the primary reverse proxy path.
+- Nginx is the active reverse proxy path.
 - First-run owner setup protects host-level controls.
 - Role-based users provide clear rails for shared access to a root-powered UI.
 - Deployment names, domains, ports, env keys, Docker images, and config filenames
   are validated server-side.
 - Secret-looking env values are redacted from API responses.
-- Domain deployments bind app ports to `127.0.0.1` so Caddy can reach them
+- Domain deployments bind app ports to `127.0.0.1` so nginx can reach them
   without publicly exposing those ports.
-- The UI starts from apps/deployments, generated template fields, logs, and
-  Compose visibility. Advanced nginx management is not part of the primary flow.
+- Long-running actions are tracked as operations with persisted step history.
+- Backup and restore are part of the single-node recovery story.
 
 ---
 

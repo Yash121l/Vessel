@@ -12,15 +12,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/Yash121l/Vessel/internal/config"
 	"github.com/Yash121l/Vessel/internal/logger"
+	"github.com/spf13/cobra"
 )
 
 const (
-	vesselRepo  = "Yash121l/Vessel"
-	vesselBin   = "/usr/local/bin/vessel"
-	vesselSvc   = "vessel"
+	vesselRepo = "Yash121l/Vessel"
+	vesselBin  = "/usr/local/bin/vessel"
+	vesselSvc  = "vessel"
 )
 
 var noRestart bool
@@ -51,14 +51,18 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("could not fetch release info: %w", err)
 	}
 
-
 	// Strip leading 'v' for comparison
 	latestVer := strings.TrimPrefix(latest, "v")
 	currentVer := strings.TrimPrefix(Version, "v")
 
-	if latestVer == currentVer {
+	switch compareReleaseVersions(latestVer, currentVer) {
+	case 0:
 		fmt.Printf("Already on the latest version (%s). Nothing to do.\n", Version)
 		logger.Infof("Already on the latest version (%s). Nothing to do.", Version)
+		return nil
+	case -1:
+		fmt.Printf("Current version (%s) is newer than the latest published release (%s). Skipping update.\n", currentVer, latestVer)
+		logger.Infof("Current version (%s) is newer than the latest published release (%s). Skipping update.", currentVer, latestVer)
 		return nil
 	}
 
@@ -247,4 +251,49 @@ func isSystemdManaged() bool {
 		}
 	}
 	return false
+}
+
+func compareReleaseVersions(a, b string) int {
+	parse := func(v string) []int {
+		v = strings.TrimSpace(strings.TrimPrefix(v, "v"))
+		if i := strings.IndexAny(v, "+-"); i >= 0 {
+			v = v[:i]
+		}
+		parts := strings.Split(v, ".")
+		out := make([]int, 0, len(parts))
+		for _, part := range parts {
+			n := 0
+			for _, ch := range part {
+				if ch < '0' || ch > '9' {
+					break
+				}
+				n = n*10 + int(ch-'0')
+			}
+			out = append(out, n)
+		}
+		return out
+	}
+
+	av := parse(a)
+	bv := parse(b)
+	maxLen := len(av)
+	if len(bv) > maxLen {
+		maxLen = len(bv)
+	}
+	for i := 0; i < maxLen; i++ {
+		ai, bi := 0, 0
+		if i < len(av) {
+			ai = av[i]
+		}
+		if i < len(bv) {
+			bi = bv[i]
+		}
+		if ai < bi {
+			return -1
+		}
+		if ai > bi {
+			return 1
+		}
+	}
+	return 0
 }

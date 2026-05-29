@@ -104,80 +104,101 @@ func (b *Bootstrapper) InstallDockerCompose() error {
 		logger.Infof("Installing Docker Compose via apt-get...")
 		return runCmd("apt-get", "install", "-y", "docker-compose-plugin")
 	case "centos", "rhel", "fedora", "rocky", "almalinux":
-		logger.Infof("Installing Docker Compose via yum...")
-		return runCmd("yum", "install", "-y", "docker-compose-plugin")
+		logger.Infof("Installing Docker Compose via rpm package manager...")
+		return b.installRPMPackages("docker-compose-plugin")
 	default:
 		logger.Infof("Distro unrecognized, installing Docker Compose manually...")
 		return b.installComposeManually()
 	}
 }
 
-// InstallCaddy installs Caddy web server if missing.
-func (b *Bootstrapper) InstallCaddy() error {
-	logger.Infof("Checking if Caddy is installed...")
-	if _, err := exec.LookPath("caddy"); err == nil {
-		logger.Infof("Caddy is already installed. Ensuring service is enabled and running...")
-		_ = runCmd("systemctl", "enable", "--now", "caddy")
+// InstallNginx installs nginx if missing.
+func (b *Bootstrapper) InstallNginx() error {
+	logger.Infof("Checking if nginx is installed...")
+	if _, err := exec.LookPath("nginx"); err == nil {
+		logger.Infof("Nginx is already installed. Ensuring service is enabled and running...")
+		_ = runCmd("systemctl", "enable", "--now", "nginx")
 		return nil
 	}
 
-	logger.Infof("Caddy not found. Installing for distro: %s...", b.distro)
+	logger.Infof("Nginx not found. Installing for distro: %s...", b.distro)
 	switch b.distro {
-	case "amzn": // Amazon Linux
-		logger.Infof("No official Caddy repository for Amazon Linux. Installing binary directly...")
-		if err := b.installCaddyBinary(); err != nil {
-			logger.Errorf("failed to install Caddy binary: %v", err)
-			return err
+	case "amzn":
+		if err := runCmd("dnf", "install", "-y", "nginx"); err != nil {
+			if err2 := runCmd("yum", "install", "-y", "nginx"); err2 != nil {
+				return err
+			}
 		}
-		logger.Infof("Creating Caddy systemd unit file...")
-		return b.writeCaddyService()
 	case "ubuntu", "debian":
-		logger.Infof("Adding Caddy apt repository and GPG key...")
-		if err := runCmd("apt-get", "install", "-y", "debian-keyring", "debian-archive-keyring", "apt-transport-https"); err != nil {
-			return err
-		}
-		if err := runPipe(
-			"curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key'",
-			"gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg",
-		); err != nil {
-			return err
-		}
-		if err := runPipe(
-			"curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt'",
-			"tee /etc/apt/sources.list.d/caddy-stable.list",
-		); err != nil {
-			return err
-		}
-		logger.Infof("Installing Caddy via apt...")
 		if err := runCmd("apt-get", "update"); err != nil {
 			return err
 		}
-		if err := runCmd("apt-get", "install", "-y", "caddy"); err != nil {
+		if err := runCmd("apt-get", "install", "-y", "nginx"); err != nil {
 			return err
 		}
 	case "centos", "rhel", "fedora", "rocky", "almalinux":
-		logger.Infof("Adding Caddy yum repository...")
-		if err := runPipe(
-			"curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/cfg/setup/config.rpm.txt'",
-			"tee /etc/yum.repos.d/caddy-stable.repo",
-		); err != nil {
-			return err
-		}
-		logger.Infof("Installing Caddy via yum...")
-		if err := runCmd("yum", "install", "-y", "caddy"); err != nil {
+		if err := b.installRPMPackages("nginx"); err != nil {
 			return err
 		}
 	default:
-		logger.Infof("Distro unrecognized, installing Caddy binary manually...")
-		if err := b.installCaddyBinary(); err != nil {
-			return err
-		}
-		logger.Infof("Creating Caddy systemd unit file...")
-		return b.writeCaddyService()
+		return fmt.Errorf("automatic nginx installation is not supported on distro %q", b.distro)
 	}
 
-	logger.Infof("Enabling and starting Caddy service...")
-	return runCmd("systemctl", "enable", "--now", "caddy")
+	logger.Infof("Enabling and starting nginx service...")
+	return runCmd("systemctl", "enable", "--now", "nginx")
+}
+
+// InstallCertbotNginx installs certbot and the nginx plugin if missing.
+func (b *Bootstrapper) InstallCertbotNginx() error {
+	logger.Infof("Checking if certbot with the nginx plugin is installed...")
+	if b.certbotHasNginxPlugin() {
+		logger.Infof("Certbot nginx plugin is already available")
+		return nil
+	}
+
+	logger.Infof("Certbot nginx plugin not found. Installing for distro: %s...", b.distro)
+	switch b.distro {
+	case "amzn":
+		if err := runCmd("dnf", "install", "-y", "certbot", "python3-certbot-nginx"); err != nil {
+			if err2 := runCmd("yum", "install", "-y", "certbot", "python3-certbot-nginx"); err2 != nil {
+				return err
+			}
+		}
+	case "ubuntu", "debian":
+		if err := runCmd("apt-get", "update"); err != nil {
+			return err
+		}
+		if err := runCmd("apt-get", "install", "-y", "certbot", "python3-certbot-nginx"); err != nil {
+			return err
+		}
+	case "centos", "rhel", "fedora", "rocky", "almalinux":
+		if err := b.installRPMPackages("certbot", "python3-certbot-nginx"); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("automatic certbot nginx installation is not supported on distro %q", b.distro)
+	}
+
+	if !b.certbotHasNginxPlugin() {
+		return fmt.Errorf("certbot installed but nginx plugin is still unavailable")
+	}
+	return nil
+}
+
+func (b *Bootstrapper) certbotHasNginxPlugin() bool {
+	if _, err := exec.LookPath("certbot"); err != nil {
+		return false
+	}
+	out, err := exec.Command("certbot", "plugins").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(out)), "nginx")
+}
+
+// InstallCaddy remains as a compatibility shim for older call sites.
+func (b *Bootstrapper) InstallCaddy() error {
+	return b.InstallNginx()
 }
 
 // ConfigureFirewall opens ports 80, 443, and the Vessel UI port.
@@ -218,7 +239,7 @@ func (b *Bootstrapper) SetupDirectories() error {
 		b.cfg.DataDir,
 		b.cfg.DeploymentsDir,
 		b.cfg.TemplatesDir,
-		b.cfg.CaddyDir,
+		b.cfg.BackupsDir,
 	}
 	for _, d := range dirs {
 		logger.Debugf("Ensuring directory exists: %s", d)
@@ -326,4 +347,14 @@ func runPipe(src, dst string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func (b *Bootstrapper) installRPMPackages(packages ...string) error {
+	args := append([]string{"install", "-y"}, packages...)
+	if _, err := exec.LookPath("dnf"); err == nil {
+		if err := runCmd("dnf", args...); err == nil {
+			return nil
+		}
+	}
+	return runCmd("yum", args...)
 }

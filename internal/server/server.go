@@ -9,10 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Yash121l/Vessel/internal/backup"
 	"github.com/Yash121l/Vessel/internal/config"
 	"github.com/Yash121l/Vessel/internal/deployment"
 	"github.com/Yash121l/Vessel/internal/logger"
-	"github.com/Yash121l/Vessel/internal/proxy"
+	"github.com/Yash121l/Vessel/internal/nginx"
+	"github.com/Yash121l/Vessel/internal/operations"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
 	"github.com/gin-gonic/gin"
@@ -55,23 +57,17 @@ func Start(cfg *config.Config, version string) error {
 		fmt.Printf("warning: failed to load custom templates: %v\n", err)
 	}
 
-	// Initialize proxy manager
-	logger.Infof("Setting up reverse proxy (Caddy)...")
-	prx := proxy.NewManager(cfg.CaddyDir)
-	if err := prx.EnsureMainConfig(); err != nil {
-		logger.Errorf("failed to configure Caddy reverse proxy: %v", err)
-		fmt.Printf("warning: caddy config setup failed: %v\n", err)
-	}
-
 	// Initialize deployment engine
 	logger.Infof("Initializing docker compose deployment engine...")
-	engine := deployment.NewEngine(cfg, db, reg, prx)
+	engine := deployment.NewEngine(cfg, db, reg, nil)
 
 	// Start background status sync
 	logger.Infof("Starting periodic background container sync status...")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go engine.PeriodicSync(ctx, 30*time.Second)
+	ops := operations.NewManager(ctx, db)
+	backupMgr := backup.NewManager(cfg, nginx.NewManager().ConfigRoot())
 
 	// Set up router
 	gin.SetMode(gin.ReleaseMode)
@@ -86,7 +82,7 @@ func Start(cfg *config.Config, version string) error {
 	// Register routes
 	logger.Infof("Registering HTTP endpoints under /api/v1")
 	api := r.Group("/api/v1")
-	registerRoutes(api, db, reg, engine, version)
+	registerRoutes(api, db, reg, engine, ops, backupMgr, version)
 
 	// Serve embedded UI
 	r.NoRoute(serveUI())
