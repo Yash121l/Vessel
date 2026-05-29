@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -673,6 +674,23 @@ type ComposeDetail struct {
 	Services       []ComposeServiceInfo `json:"services"`
 }
 
+type composeDetailEntry struct {
+	Name       string          `json:"Name"`
+	Image      string          `json:"Image"`
+	State      string          `json:"State"`
+	Status     string          `json:"Status"`
+	Ports      string          `json:"Ports"`
+	CreatedAt  string          `json:"CreatedAt"`
+	Publishers json.RawMessage `json:"Publishers"`
+}
+
+type composePublisher struct {
+	URL           string `json:"URL"`
+	TargetPort    int    `json:"TargetPort"`
+	PublishedPort int    `json:"PublishedPort"`
+	Protocol      string `json:"Protocol"`
+}
+
 // GetComposeDetail returns the compose file content and live service states for a deployment.
 func (e *Engine) GetComposeDetail(ctx context.Context, id string) (*ComposeDetail, error) {
 	d, err := e.db.GetDeployment(id)
@@ -695,39 +713,119 @@ func (e *Engine) GetComposeDetail(ctx context.Context, id string) (*ComposeDetai
 		detail.ComposeYAML = string(data)
 	}
 
-	// Get live service states via docker compose ps
-	cmd := exec.CommandContext(ctx, "docker", "compose", "ps", "--format",
-		"table {{.Name}}\t{{.Image}}\t{{.State}}\t{{.Ports}}\t{{.CreatedAt}}")
+	// Get live service states via docker compose ps JSON output.
+	cmd := exec.CommandContext(ctx, "docker", "compose", "ps", "--format", "json")
 	cmd.Dir = d.ComposeDir
 	out, err := cmd.Output()
 	if err == nil {
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		for i, line := range lines {
-			if i == 0 || line == "" {
-				continue // skip header
-			}
-			parts := strings.Split(line, "\t")
-			svc := ComposeServiceInfo{}
-			if len(parts) > 0 {
-				svc.Name = strings.TrimSpace(parts[0])
-			}
-			if len(parts) > 1 {
-				svc.Image = strings.TrimSpace(parts[1])
-			}
-			if len(parts) > 2 {
-				svc.State = strings.TrimSpace(parts[2])
-			}
-			if len(parts) > 3 {
-				svc.Ports = strings.TrimSpace(parts[3])
-			}
-			if len(parts) > 4 {
-				svc.Created = strings.TrimSpace(parts[4])
-			}
-			detail.Services = append(detail.Services, svc)
+		if services, ok := parseComposeDetailOutput(out); ok {
+			detail.Services = services
 		}
 	}
 
 	return detail, nil
+}
+
+func parseComposeDetailOutput(out []byte) ([]ComposeServiceInfo, bool) {
+	out = bytes.TrimSpace(out)
+	if len(out) == 0 {
+		return nil, false
+	}
+
+	var entries []composeDetailEntry
+	if out[0] == '[' {
+		if err := json.Unmarshal(out, &entries); err != nil {
+			return nil, false
+		}
+	} else {
+		for _, line := range bytes.Split(out, []byte("\n")) {
+			line = bytes.TrimSpace(line)
+			if len(line) == 0 {
+				continue
+			}
+			var entry composeDetailEntry
+			if err := json.Unmarshal(line, &entry); err != nil {
+				return nil, false
+			}
+			entries = append(entries, entry)
+		}
+	}
+
+	services := make([]ComposeServiceInfo, 0, len(entries))
+	for _, entry := range entries {
+		services = append(services, ComposeServiceInfo{
+			Name:    strings.TrimSpace(entry.Name),
+			Image:   strings.TrimSpace(entry.Image),
+			State:   composeDetailState(entry),
+			Ports:   composeDetailPorts(entry),
+			Created: strings.TrimSpace(entry.CreatedAt),
+		})
+	}
+	return services, true
+}
+
+func composeDetailState(entry composeDetailEntry) string {
+	if state := strings.TrimSpace(entry.State); state != "" {
+		return state
+	}
+	status := strings.Fields(strings.ToLower(strings.TrimSpace(entry.Status)))
+	if len(status) > 0 {
+		return status[0]
+	}
+	return ""
+}
+
+func composeDetailPorts(entry composeDetailEntry) string {
+	if ports := strings.TrimSpace(entry.Ports); ports != "" {
+		return ports
+	}
+	if len(entry.Publishers) == 0 || bytes.Equal(bytes.TrimSpace(entry.Publishers), []byte("null")) {
+		return ""
+	}
+
+	var publishers []composePublisher
+	if err := json.Unmarshal(entry.Publishers, &publishers); err == nil {
+		parts := make([]string, 0, len(publishers))
+		for _, publisher := range publishers {
+			if part := formatComposePublisher(publisher); part != "" {
+				parts = append(parts, part)
+			}
+		}
+		return strings.Join(parts, ", ")
+	}
+
+	var raw string
+	if err := json.Unmarshal(entry.Publishers, &raw); err == nil {
+		return strings.TrimSpace(raw)
+	}
+
+	return ""
+}
+
+func formatComposePublisher(publisher composePublisher) string {
+	targetPort := ""
+	if publisher.TargetPort > 0 {
+		targetPort = strconv.Itoa(publisher.TargetPort)
+	}
+	protocol := strings.TrimSpace(strings.ToLower(publisher.Protocol))
+	if protocol == "" {
+		protocol = "tcp"
+	}
+
+	if publisher.PublishedPort > 0 {
+		host := strconv.Itoa(publisher.PublishedPort)
+		if url := strings.TrimSpace(publisher.URL); url != "" {
+			host = url + ":" + host
+		}
+		if targetPort != "" {
+			return host + "->" + targetPort + "/" + protocol
+		}
+		return host + "/" + protocol
+	}
+	if targetPort != "" {
+		return targetPort + "/" + protocol
+	}
+	return ""
 }
 
 // PeriodicSync refreshes all deployment statuses every interval.

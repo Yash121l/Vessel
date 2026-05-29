@@ -1856,9 +1856,9 @@ function pageOperations(){
   const list=ops.length?ops.map(op=>
     '<button class="card" onclick="loadOperation(\''+op.id+'\')" style="width:100%;text-align:left;padding:14px 16px;cursor:pointer;'+
       'border-color:'+(selected&&selected.id===op.id?'var(--accent)':'var(--border)')+';background:'+(selected&&selected.id===op.id?'var(--surface2)':'var(--surface)')+'">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">'+
-        '<strong style="font-size:13px">'+operationKindLabel(op.kind)+'</strong>'+
-        operationStatusTag(op.status)+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px">'+
+        '<strong style="font-size:13px;min-width:0">'+operationKindLabel(op.kind)+'</strong>'+
+        '<div style="flex-shrink:0">'+operationStatusTag(op.status)+'</div>'+
       '</div>'+
       '<div style="font-size:12px;color:var(--muted2)">'+escHtml(op.resource_name||op.resource_id||'system')+'</div>'+
       '<div style="font-size:11px;color:var(--muted);margin-top:6px">'+escHtml(op.summary||op.error||'No summary yet')+'</div>'+
@@ -1866,19 +1866,19 @@ function pageOperations(){
   let detail='<div class="card" style="padding:24px;color:var(--muted)">Select an operation to inspect its steps.</div>';
   if(selected){
     const steps=(selected.steps||[]).map(step=>
-      '<div style="padding:12px 0;border-top:1px solid var(--border)">'+
-        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">'+
-          '<strong style="font-size:13px">'+escHtml(step.title||step.step_key)+'</strong>'+
-          operationStatusTag(step.status)+
+      '<div style="padding:12px 0;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px">'+
+        '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap">'+
+          '<strong style="font-size:13px;min-width:0">'+escHtml(step.title||step.step_key)+'</strong>'+
+          '<div style="flex-shrink:0">'+operationStatusTag(step.status)+'</div>'+
         '</div>'+
-        (step.details?'<div style="font-size:12px;color:var(--muted2);margin-bottom:8px">'+escHtml(step.details)+'</div>':'')+
-        (step.output?'<pre style="padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);white-space:pre-wrap;max-height:220px">'+escHtml(step.output)+'</pre>':'')+
+        (step.details?'<div style="font-size:12px;color:var(--muted2)">'+escHtml(step.details)+'</div>':'')+
+        (step.output?'<pre style="margin:0;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);white-space:pre-wrap;overflow:auto;max-height:220px;box-sizing:border-box;font-size:12px;line-height:1.5">'+escHtml(step.output)+'</pre>':'')+
       '</div>').join('');
     detail='<div class="card" style="padding:24px">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">'+
         '<div><div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">'+operationKindLabel(selected.kind)+'</div>'+
           '<h2 style="font-size:18px;font-weight:700;letter-spacing:-.4px;margin-top:6px">'+escHtml(selected.resource_name||selected.resource_id||'System operation')+'</h2></div>'+
-        operationStatusTag(selected.status)+
+        '<div style="flex-shrink:0">'+operationStatusTag(selected.status)+'</div>'+
       '</div>'+
       '<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--muted2);margin-bottom:10px">'+
         '<span>Actor: '+escHtml(selected.actor_username||'system')+'</span>'+

@@ -16,14 +16,13 @@ func resetPrimaryIPStateForTest(t *testing.T) {
 	t.Helper()
 	oldDetector := primaryIPv4Detector
 	oldLookup := dnsLookupIP
-	oldOnce := primaryIPv4Once
 	oldValue := primaryIPv4Value
 	oldEnv, hadEnv := os.LookupEnv("VESSEL_PUBLIC_IP")
 
 	t.Cleanup(func() {
 		primaryIPv4Detector = oldDetector
 		dnsLookupIP = oldLookup
-		primaryIPv4Once = oldOnce
+		primaryIPv4Once = sync.Once{}
 		primaryIPv4Value = oldValue
 		if hadEnv {
 			_ = os.Setenv("VESSEL_PUBLIC_IP", oldEnv)

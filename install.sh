@@ -5,13 +5,13 @@ set -euo pipefail
 
 # Dynamically fetch the latest release tag from GitHub if not specified
 if [[ -z "${VESSEL_VERSION:-}" ]]; then
-  # Try to fetch latest tag name, e.g. "v1.1.8"
+  # Try to fetch latest tag name, e.g. "v1.1.9"
   LATEST_TAG=$(curl -fsSL https://api.github.com/repos/Yash121l/Vessel/releases/latest | grep '"tag_name":' | cut -d'"' -f4 || true)
   if [[ -n "$LATEST_TAG" ]]; then
     # Strip leading 'v' if present
     VESSEL_VERSION="${LATEST_TAG#v}"
   else
-    VESSEL_VERSION="1.1.8"
+    VESSEL_VERSION="1.1.9"
   fi
 else
   # If specified via env, strip leading 'v' as well
