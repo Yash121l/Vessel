@@ -25,7 +25,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
           cache: true
 
       - name: Download modules
@@ -58,6 +58,30 @@ jobs:
           echo "RELEASE_TAG=${TAG}" >> $GITHUB_ENV
           echo "RELEASE_VERSION=${VERSION}" >> $GITHUB_ENV
 
+      - name: Collect release metrics
+        run: |
+          scripts/collect-ci-metrics.sh \
+            --mode release \
+            --version "${RELEASE_VERSION}" \
+            --dist-dir dist \
+            --primary-binary dist/vessel_linux_amd64 \
+            --output-dir release-metrics
+
+      - name: Publish release metrics summary
+        if: always()
+        run: |
+          if [ -f release-metrics/summary.md ]; then
+            cat release-metrics/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload release metrics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-metrics-${{ env.RELEASE_TAG }}
+          path: release-metrics
+          if-no-files-found: ignore
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -67,6 +91,8 @@ jobs:
             dist/vessel_linux_arm64
             dist/vessel_linux_armv7
             install.sh
+            release-metrics/summary.md
+            release-metrics/metrics.json
           generate_release_notes: true
           body: |
             ## Install

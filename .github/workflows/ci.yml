@@ -16,14 +16,42 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
           cache: true
 
       - name: Download modules
         run: GOFLAGS="-mod=mod" CGO_ENABLED=0 go mod download
 
       - name: Build
-        run: GOFLAGS="-mod=mod" CGO_ENABLED=0 go build -ldflags="-s -w" ./...
+        run: |
+          mkdir -p dist
+          GOFLAGS="-mod=mod" CGO_ENABLED=0 go build -ldflags="-s -w" ./...
+          GOFLAGS="-mod=mod" CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -ldflags="-s -w" -o dist/vessel_linux_amd64 .
 
       - name: Vet
         run: GOFLAGS="-mod=mod" CGO_ENABLED=0 go vet ./...
+
+      - name: Collect CI metrics
+        run: |
+          scripts/collect-ci-metrics.sh \
+            --mode ci \
+            --version "${GITHUB_SHA}" \
+            --dist-dir dist \
+            --primary-binary dist/vessel_linux_amd64 \
+            --output-dir ci-metrics
+
+      - name: Publish CI metrics summary
+        if: always()
+        run: |
+          if [ -f ci-metrics/summary.md ]; then
+            cat ci-metrics/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload CI metrics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-metrics
+          path: ci-metrics
+          if-no-files-found: ignore
