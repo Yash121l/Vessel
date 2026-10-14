@@ -202,6 +202,32 @@ Environment variable overrides:
 - `VESSEL_DATA_DIR` — data directory
 - `VESSEL_TEMPLATE_CATALOG_URL` — remote template catalog URL
 - `VESSEL_TEMPLATE_CATALOG_DISABLED=1` — skip remote template loading
+- `VESSEL_TELEMETRY=0` (or `DO_NOT_TRACK=1`) — turn off anonymous usage telemetry
+
+### Telemetry
+
+Vessel sends anonymous usage events to PostHog so the maintainer can see which versions,
+templates and operations are used and how often they fail:
+
+- `server_started`: version, OS, architecture, and counts of templates, deployments and users
+- `operation_completed`: operation kind (`deploy`, `restart_deployment`, `create_backup`, ...),
+  success, duration, and for template deploys the public template id (`n8n`, `umami`, ...)
+- `cli_command_run`: command name (`backup`, `restore`, `update`, ...), duration and exit code
+
+Events are keyed by a random install id in `<data_dir>/telemetry.json`. Deployment names,
+domains, images, environment variables, logs, errors, IP addresses you configure, and private
+local template ids are never sent. Vessel prints a notice the first time it creates the id.
+The web UI loads no analytics scripts.
+
+To turn it off for the service, run `sudo systemctl edit vessel`, add the lines below, then
+`sudo systemctl restart vessel`:
+
+```ini
+[Service]
+Environment=VESSEL_TELEMETRY=0
+```
+
+For CLI commands, export `VESSEL_TELEMETRY=0` or `DO_NOT_TRACK=1`.
 
 ### Debug Logging
 

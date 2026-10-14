@@ -18,6 +18,9 @@ import (
 type Manager struct {
 	db      *store.DB
 	baseCtx context.Context
+
+	// OnFinish, when set, is called after every operation finishes. Used for telemetry.
+	OnFinish func(spec Spec, duration time.Duration, err error)
 }
 
 type Spec struct {
@@ -34,6 +37,7 @@ type Spec struct {
 type Run struct {
 	db          *store.DB
 	operationID string
+	startedAt   time.Time
 	mu          sync.Mutex
 	nextPos     int
 	summary     string
@@ -107,6 +111,7 @@ func (m *Manager) Begin(spec Spec) (*store.Operation, *Run, error) {
 	run := &Run{
 		db:          m.db,
 		operationID: op.ID,
+		startedAt:   now,
 		summary:     strings.ReplaceAll(spec.Kind, "_", " "),
 	}
 	stored, err := m.db.GetOperation(op.ID)
@@ -118,6 +123,9 @@ func (m *Manager) Begin(spec Spec) (*store.Operation, *Run, error) {
 
 func (m *Manager) Finish(run *Run, spec Spec, err error) error {
 	finishedAt := time.Now().UTC()
+	if m.OnFinish != nil {
+		m.OnFinish(spec, finishedAt.Sub(run.startedAt), err)
+	}
 	summary := run.summary
 	if summary == "" {
 		summary = strings.ReplaceAll(spec.Kind, "_", " ")
