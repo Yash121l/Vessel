@@ -17,6 +17,7 @@ import (
 	"github.com/Yash121l/Vessel/internal/operations"
 	"github.com/Yash121l/Vessel/internal/registry"
 	"github.com/Yash121l/Vessel/internal/store"
+	"github.com/Yash121l/Vessel/internal/telemetry"
 	"github.com/gin-gonic/gin"
 )
 
@@ -51,6 +52,7 @@ func Start(cfg *config.Config, version string) error {
 			fmt.Printf("warning: failed to load remote templates: %v\n", err)
 		}
 	}
+	publicIDs := publicTemplateIDs(reg)
 	logger.Infof("Loading custom templates from data templates directory: %s", cfg.TemplatesDir)
 	if err := reg.LoadFromDir(cfg.TemplatesDir); err != nil {
 		logger.Errorf("failed to load custom templates from directory: %v", err)
@@ -67,6 +69,10 @@ func Start(cfg *config.Config, version string) error {
 	defer cancel()
 	go engine.PeriodicSync(ctx, 30*time.Second)
 	ops := operations.NewManager(ctx, db)
+	tel := telemetry.New(version, cfg.DataDir)
+	defer tel.Flush(3 * time.Second)
+	reportOperations(ops, tel, publicIDs)
+	reportStart(tel, db, reg)
 	backupMgr := backup.NewManager(cfg, nginx.NewManager().ConfigRoot())
 
 	// Set up router

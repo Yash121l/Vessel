@@ -3,10 +3,12 @@ package cli
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/Yash121l/Vessel/internal/config"
 	"github.com/Yash121l/Vessel/internal/logger"
 	"github.com/Yash121l/Vessel/internal/server"
+	"github.com/Yash121l/Vessel/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
@@ -61,8 +63,38 @@ func init() {
 
 func Execute() {
 	rootCmd.AddCommand(serveCmd, bootstrapCmd, versionCmd, updateCmd, backupCmd, restoreCmd)
-	if err := rootCmd.Execute(); err != nil {
+	started := time.Now()
+	cmd, err := rootCmd.ExecuteC()
+	reportCommand(cmd, started, err)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// reportCommand sends one anonymous cli_command_run event for every command except
+// serve, which reports its own events. Only the command name, never arguments or flags.
+func reportCommand(cmd *cobra.Command, started time.Time, err error) {
+	if cmd == nil || cmd == serveCmd {
+		return
+	}
+	name := cmd.Name()
+	if cmd == rootCmd {
+		name = "help"
+	}
+	exitCode := 0
+	if err != nil {
+		exitCode = 1
+	}
+	dataDir := config.DefaultDataDir
+	if cfg, loadErr := config.Load(); loadErr == nil {
+		dataDir = cfg.DataDir
+	}
+	tel := telemetry.New(Version, dataDir)
+	tel.Capture("cli_command_run", map[string]any{
+		"command":     name,
+		"duration_ms": time.Since(started).Milliseconds(),
+		"exit_code":   exitCode,
+	})
+	tel.Flush(2 * time.Second)
 }
